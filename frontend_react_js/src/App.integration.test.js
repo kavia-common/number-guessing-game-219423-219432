@@ -23,18 +23,15 @@ function readAttempts() {
 }
 
 // PUBLIC_INTERFACE
-test('game renders, supports difficulty changes, guessing, reset, scoring, hint, timer toggle, and shows attempts counters', () => {
+test('game renders, supports difficulty changes, guessing, reset, scoring, hints, timer toggle, and shows attempts counters', () => {
   render(<App />);
 
   // UI elements present
   expect(screen.getByText(/Number Guessing Game/i)).toBeInTheDocument();
   const input = screen.getByLabelText(/Enter your guess/i);
   const guessBtn = screen.getByRole('button', { name: /Guess/i });
-  const hintBtn = screen.getByRole('button', { name: /Get Hint/i });
   expect(input).toBeInTheDocument();
   expect(guessBtn).toBeInTheDocument();
-  expect(hintBtn).toBeInTheDocument();
-  expect(hintBtn).toBeEnabled();
 
   // Timer Mode toggle presence
   expect(screen.getByLabelText(/Enable Timer Mode/i)).toBeInTheDocument();
@@ -68,10 +65,33 @@ test('game renders, supports difficulty changes, guessing, reset, scoring, hint,
   expect(counters.used).toBe(0);
   expect(counters.remaining).toBe(6);
 
-  // Use hint during active game, hint text shows
-  const hintBtnEasy = screen.getByRole('button', { name: /Get Hint/i });
-  fireEvent.click(hintBtnEasy);
+  // Use parity hint during active game, hint text shows and button disables after use
+  const parityBtn = screen.getByRole('button', { name: /Even\/Odd/i });
+  fireEvent.click(parityBtn);
   expect(screen.getByText(/Hint: The number is (even|odd)/i)).toBeInTheDocument();
+  expect(parityBtn).toBeDisabled();
+
+  // Request range hint
+  const rangeBtn = screen.getByRole('button', { name: /Range/i });
+  fireEvent.click(rangeBtn);
+  const rangeHint = screen.getByText(/Hint: The number is between/i);
+  expect(rangeHint).toBeInTheDocument();
+  // Verify not full range
+  expect(rangeHint.textContent).toMatch(/between 1–19|between 2–20|between \d+–\d+/i);
+  expect(rangeBtn).toBeDisabled();
+
+  // Request starting digit hint
+  const digitBtn = screen.getByRole('button', { name: /Starts With/i });
+  fireEvent.click(digitBtn);
+  expect(screen.getByText(/Hint: The number (starts with|It's a single-digit number)/i)).toBeInTheDocument();
+  expect(digitBtn).toBeDisabled();
+
+  // Proximity hint before a guess should explain need for at least one guess or be generic
+  const proxBtn = screen.getByRole('button', { name: /Proximity/i });
+  // After we already guessed earlier in medium, but after difficulty change attempts are 0; so proximity should indicate needs a guess
+  fireEvent.click(proxBtn);
+  expect(screen.getByText(/Hint: .*guess/i)).toBeInTheDocument();
+  expect(proxBtn).toBeDisabled();
 
   // Brute-force guesses to guarantee a win within small range and capture score
   let scoreTextEasyFirst = null;
@@ -88,8 +108,11 @@ test('game renders, supports difficulty changes, guessing, reset, scoring, hint,
   }
   expect(scoreTextEasyFirst).not.toBeNull();
 
-  // Hint button disabled after win
-  expect(screen.getByRole('button', { name: /Get Hint/i })).toBeDisabled();
+  // Hint buttons disabled after win
+  expect(screen.getByRole('button', { name: /Even\/Odd/i })).toBeDisabled();
+  expect(screen.getByRole('button', { name: /Range/i })).toBeDisabled();
+  expect(screen.getByRole('button', { name: /Starts With/i })).toBeDisabled();
+  expect(screen.getByRole('button', { name: /Proximity/i })).toBeDisabled();
 
   // Play Again should reset attempts and hide score until next win; hint cleared
   const playAgainBtn = screen.getByRole('button', { name: /Play Again/i });

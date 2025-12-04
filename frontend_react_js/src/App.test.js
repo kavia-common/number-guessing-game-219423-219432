@@ -50,7 +50,7 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-test('renders header, controls, difficulty selector, and attempts counters', () => {
+test('renders header, controls, difficulty selector, attempts counters, and hint buttons', () => {
   render(<App />);
   expect(screen.getByText(/Number Guessing Game/i)).toBeInTheDocument();
   expect(screen.getByText(/between 1 and 50/i)).toBeInTheDocument();
@@ -63,10 +63,11 @@ test('renders header, controls, difficulty selector, and attempts counters', () 
   expect(screen.getByText(/Attempts used:/i)).toBeInTheDocument();
   expect(screen.getByText(/Attempts remaining:/i)).toBeInTheDocument();
 
-  // Hint button exists and is enabled while playing
-  const hintBtn = screen.getByRole('button', { name: /Get Hint/i });
-  expect(hintBtn).toBeInTheDocument();
-  expect(hintBtn).toBeEnabled();
+  // Hint buttons exist and are enabled while playing
+  expect(screen.getByRole('button', { name: /Even\/Odd/i })).toBeEnabled();
+  expect(screen.getByRole('button', { name: /Range/i })).toBeEnabled();
+  expect(screen.getByRole('button', { name: /Starts With/i })).toBeEnabled();
+  expect(screen.getByRole('button', { name: /Proximity/i })).toBeEnabled();
 
   // Timer Mode toggle present
   expect(screen.getByLabelText(/Enable Timer Mode/i)).toBeInTheDocument();
@@ -90,62 +91,78 @@ test('score is hidden initially and appears after a correct guess', () => {
   }
   expect(screen.getByText(/Score:/i)).toBeInTheDocument();
 
-  const hintBtn = screen.getByRole('button', { name: /Get Hint/i });
-  expect(hintBtn).toBeDisabled();
+  // hint buttons disabled after win
+  expect(screen.getByRole('button', { name: /Even\/Odd/i })).toBeDisabled();
 });
 
-test('using hint shows hint text and reduces final score compared to no hint with similar attempts', () => {
+test('using parity hint shows text and reduces final score; range/digit/proximity hints also respond; buttons disable after use', () => {
   render(<App />);
 
   fireEvent.change(screen.getByLabelText(/Select difficulty/i), { target: { value: 'easy' } });
 
   const input = screen.getByLabelText(/Enter your guess/i);
   const guessBtn = screen.getByRole('button', { name: /Guess/i });
-  const hintBtn = screen.getByRole('button', { name: /Get Hint/i });
 
+  // Make an initial guess to enable proximity 'meaningful'
   fireEvent.change(input, { target: { value: '1' } });
   fireEvent.click(guessBtn);
 
-  fireEvent.click(hintBtn);
+  const parityBtn = screen.getByRole('button', { name: /Even\/Odd/i });
+  fireEvent.click(parityBtn);
   expect(screen.getByText(/Hint: The number is (even|odd)/i)).toBeInTheDocument();
+  expect(parityBtn).toBeDisabled();
 
-  const scoreTextAfterHintRun = bruteForceWinAndGetScoreText(20);
-  expect(scoreTextAfterHintRun).not.toBeNull();
+  const rangeBtn = screen.getByRole('button', { name: /Range/i });
+  fireEvent.click(rangeBtn);
+  const rangeMsg = screen.getByText(/Hint: The number is between/i);
+  expect(rangeMsg).toBeInTheDocument();
+  // the subrange should not trivially equal full range
+  expect(rangeMsg.textContent).not.toMatch(/between 1–20$/i);
+  expect(rangeBtn).toBeDisabled();
 
+  const digitBtn = screen.getByRole('button', { name: /Starts With/i });
+  fireEvent.click(digitBtn);
+  expect(screen.getByText(/Hint: The number (starts with|single-digit)/i)).toBeInTheDocument();
+  expect(digitBtn).toBeDisabled();
+
+  const proxBtn = screen.getByRole('button', { name: /Proximity/i });
+  fireEvent.click(proxBtn);
+  expect(screen.getByText(/Hint:/i)).toBeInTheDocument();
+  expect(proxBtn).toBeDisabled();
+
+  const scoreWithHints = bruteForceWinAndGetScoreText(20);
+  expect(scoreWithHints).not.toBeNull();
+
+  // Play again and win without hints to compare
   const playAgain = screen.getByRole('button', { name: /Play Again/i });
   fireEvent.click(playAgain);
 
-  fireEvent.change(input, { target: { value: '1' } });
-  fireEvent.click(guessBtn);
-
-  const scoreTextNoHintRun = bruteForceWinAndGetScoreText(20);
-  expect(scoreTextNoHintRun).not.toBeNull();
+  const scoreNoHints = bruteForceWinAndGetScoreText(20);
+  expect(scoreNoHints).not.toBeNull();
 
   const extractNumber = (txt) => {
     const m = txt.match(/(\d+)/);
     return m ? Number(m[1]) : 0;
   };
-  const withHint = extractNumber(scoreTextAfterHintRun);
-  const withoutHint = extractNumber(scoreTextNoHintRun);
-
-  expect(withoutHint).toBeGreaterThanOrEqual(withHint);
+  expect(extractNumber(scoreNoHints)).toBeGreaterThanOrEqual(extractNumber(scoreWithHints));
 });
 
 test('hint state resets on New Game and on difficulty change', () => {
   render(<App />);
 
-  const hintBtn = screen.getByRole('button', { name: /Get Hint/i });
-  fireEvent.click(hintBtn);
-  expect(screen.getByText(/Hint: The number is (even|odd)/i)).toBeInTheDocument();
+  const parityBtn = screen.getByRole('button', { name: /Even\/Odd/i });
+  fireEvent.click(parityBtn);
+  expect(parityBtn).toBeDisabled();
 
+  // Reset -> buttons enabled again
   const resetBtn = screen.getByRole('button', { name: /Reset/i });
   fireEvent.click(resetBtn);
-  expect(screen.getByText(/Make a guess to begin!/i)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Even\/Odd/i })).toBeEnabled();
 
-  fireEvent.click(hintBtn);
-  expect(screen.getByText(/Hint: The number is (even|odd)/i)).toBeInTheDocument();
+  // Use and change difficulty -> buttons enabled again
+  fireEvent.click(screen.getByRole('button', { name: /Even\/Odd/i }));
   fireEvent.change(screen.getByLabelText(/Select difficulty/i), { target: { value: 'hard' } });
-  expect(screen.getByText(/Make a guess to begin!/i)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Even\/Odd/i })).toBeEnabled();
 });
 
 test('Timer Mode countdown displays and stops on win; no score on timeout', () => {

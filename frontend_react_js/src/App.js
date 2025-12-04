@@ -54,6 +54,15 @@ const MAX_ATTEMPTS = {
   hard: 10,
 };
 
+// PUBLIC_INTERFACE
+// Hint types for this game
+const HINT_TYPES = {
+  parity: 'parity',
+  range: 'range',
+  digit: 'digit',
+  proximity: 'proximity',
+};
+
 /** PUBLIC_INTERFACE
  * Format seconds to mm:ss (or s for under a minute if desired)
  */
@@ -98,9 +107,16 @@ function App() {
   // Leaderboard modal visibility
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
 
-  // Hint state: count of hints used, and last hint text
-  const [hintCount, setHintCount] = useState(0);
+  // Hint state:
+  // count of hint types used (penalty per unique type)
+  const [hintTypesUsed, setHintTypesUsed] = useState({
+    [HINT_TYPES.parity]: false,
+    [HINT_TYPES.range]: false,
+    [HINT_TYPES.digit]: false,
+    [HINT_TYPES.proximity]: false,
+  });
   const [lastHint, setLastHint] = useState('');
+  const hintCount = Object.values(hintTypesUsed).filter(Boolean).length;
 
   // Attempts remaining derived from difficulty and attempts used
   const maxAttempts = MAX_ATTEMPTS[difficulty];
@@ -260,6 +276,17 @@ function App() {
     return '';
   }, [timeLeft, timerMode, status, difficulty]);
 
+  // Reset all hint state
+  function resetHints() {
+    setHintTypesUsed({
+      [HINT_TYPES.parity]: false,
+      [HINT_TYPES.range]: false,
+      [HINT_TYPES.digit]: false,
+      [HINT_TYPES.proximity]: false,
+    });
+    setLastHint('');
+  }
+
   // PUBLIC_INTERFACE
   function resetGame() {
     setSecret(generateSecret(range.min, range.max));
@@ -268,8 +295,7 @@ function App() {
     setAttempts(0);
     setStatus('playing');
     setScore(0);
-    setHintCount(0);
-    setLastHint('');
+    resetHints();
     resetAndMaybeStartTimer(difficulty);
     setTimeout(() => inputRef.current?.focus(), 0);
   }
@@ -286,8 +312,7 @@ function App() {
     setAttempts(0);
     setStatus('playing');
     setScore(0);
-    setHintCount(0);
-    setLastHint('');
+    resetHints();
     resetAndMaybeStartTimer(next);
     setTimeout(() => inputRef.current?.focus(), 0);
   }
@@ -364,14 +389,108 @@ function App() {
   }
 
   // PUBLIC_INTERFACE
-  function handleGetHint() {
-    if (status === 'won' || status === 'timeout' || status === 'out_of_attempts') return;
-    const parity = secret % 2 === 0 ? 'even' : 'odd';
-    const hintText = `Hint: The number is ${parity}.`;
-    setLastHint(hintText);
-    setHintCount((c) => c + 1);
-    setFeedback(hintText);
+  function announceHint(text, typeKey) {
+    setLastHint(text);
+    setFeedback(text);
+    // Only apply penalty once per hint type
+    setHintTypesUsed((prev) => {
+      if (!prev[typeKey]) {
+        return { ...prev, [typeKey]: true };
+      }
+      return prev;
+    });
     setTimeout(() => feedbackRef.current?.focus(), 0);
+  }
+
+  // PUBLIC_INTERFACE
+  function handleParityHint() {
+    if (status !== 'playing') return;
+    const parity = secret % 2 === 0 ? 'even' : 'odd';
+    announceHint(`Hint: The number is ${parity}.`, HINT_TYPES.parity);
+  }
+
+  // PUBLIC_INTERFACE
+  function handleRangeHint() {
+    if (status !== 'playing') return;
+    // Create a subrange around the secret within difficulty bounds
+    const totalSpan = range.max - range.min + 1;
+    // target a subrange about one third of the current span, min width 5, max width totalSpan - 2
+    const targetWidth = Math.min(Math.max(5, Math.floor(totalSpan / 3)), Math.max(3, totalSpan - 2));
+    const half = Math.floor(targetWidth / 2);
+    let start = Math.max(range.min, secret - half);
+    let end = start + targetWidth - 1;
+    if (end > range.max) {
+      end = range.max;
+      start = Math.max(range.min, end - targetWidth + 1);
+    }
+    // Ensure it doesn't collapse to entire range
+    if (start === range.min && end === range.max && totalSpan > 5) {
+      // shrink by 1 on each side if possible
+      start = range.min + 1;
+      end = range.max - 1;
+    }
+    // Ensure secret is inside
+    if (secret < start) start = secret;
+    if (secret > end) end = secret;
+
+    const text = `Hint: The number is between ${start}–${end}.`;
+    announceHint(text, HINT_TYPES.range);
+  }
+
+  // PUBLIC_INTERFACE
+  function handleDigitHint() {
+    if (status !== 'playing') return;
+    const s = String(secret);
+    const startDigit = s[0];
+    // If single-digit, it reveals the number — but allowed by requirement to handle gracefully
+    const text =
+      s.length === 1
+        ? `Hint: It's a single-digit number and starts with ${startDigit}.`
+        : `Hint: The number starts with ${startDigit}.`;
+    announceHint(text, HINT_TYPES.digit);
+  }
+
+  // PUBLIC_INTERFACE
+  function handleProximityHint() {
+    if (status !== 'playing') return;
+    if (attempts <= 0) {
+      announceHint('Hint: Make at least one guess to get a proximity hint.', HINT_TYPES.proximity);
+      return;
+    }
+    const lastGuessNum = Number(input) || NaN;
+    // When no current input, we infer last guess proximity based on feedback history is not tracked; use last numeric input if valid.
+    // If current input invalid, just provide a category based on the most recent valid guess captured via attempts changes.
+    // For simplicity, we'll provide generic guidance when we cannot read a valid last guess.
+    let msg = 'Hint: ';
+    const thresholdVeryClose = 3;
+    const thresholdHot = 6;
+    const thresholdWarm = 12;
+    let lastGuess = null;
+
+    // Attempt to parse from feedback 'Too high/low' doesn't tell the guess; best effort use last entered input if within range
+    const parsed = Number(input);
+    if (!Number.isNaN(parsed) && Number.isInteger(parsed) && parsed >= range.min && parsed <= range.max) {
+      lastGuess = parsed;
+    }
+
+    if (lastGuess != null) {
+      const delta = Math.abs(secret - lastGuess);
+      if (delta === 0) {
+        msg += 'You already have the correct number!';
+      } else if (delta <= thresholdVeryClose) {
+        msg += 'You are very close.';
+      } else if (delta <= thresholdHot) {
+        msg += 'Hot.';
+      } else if (delta <= thresholdWarm) {
+        msg += 'Warm.';
+      } else {
+        msg += 'Cold.';
+      }
+    } else {
+      msg += 'Proximity available after a valid guess.';
+    }
+
+    announceHint(msg, HINT_TYPES.proximity);
   }
 
   function onKeyDown(e) {
@@ -384,6 +503,8 @@ function App() {
     typeof window !== 'undefined' &&
     window.matchMedia &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const playingDisabled = status === 'won' || status === 'timeout' || status === 'out_of_attempts';
 
   return (
     <div className="App" style={{ background: THEME.background, color: THEME.text }}>
@@ -502,7 +623,7 @@ function App() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={onKeyDown}
-                disabled={status === 'won' || status === 'timeout' || status === 'out_of_attempts'}
+                disabled={playingDisabled}
                 aria-describedby="feedback attempts score"
                 aria-invalid={feedback && status === 'playing' ? 'true' : 'false'}
               />
@@ -510,7 +631,7 @@ function App() {
                 type="submit"
                 className="ngg-btn"
                 style={{ backgroundColor: THEME.primary }}
-                disabled={status === 'won' || status === 'timeout' || status === 'out_of_attempts'}
+                disabled={playingDisabled}
               >
                 Guess
               </button>
@@ -571,16 +692,57 @@ function App() {
                 >
                   Reset
                 </button>
-                <button
-                  className="ngg-btn-secondary"
-                  onClick={handleGetHint}
-                  type="button"
-                  aria-label="Get a hint about the secret number"
-                  disabled={status === 'won' || status === 'timeout' || status === 'out_of_attempts'}
-                  style={{ borderColor: THEME.secondary, color: THEME.secondary }}
-                >
-                  Get Hint
-                </button>
+
+                {/* Hints */}
+                <div role="group" aria-label="Hint options" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                  <button
+                    className="ngg-btn-secondary"
+                    type="button"
+                    onClick={handleParityHint}
+                    aria-label="Get parity hint (even or odd)"
+                    disabled={playingDisabled || hintTypesUsed[HINT_TYPES.parity]}
+                    title="Parity (costs score)"
+                    style={{ borderColor: THEME.secondary, color: THEME.secondary }}
+                  >
+                    Even/Odd
+                  </button>
+                  <button
+                    className="ngg-btn-secondary"
+                    type="button"
+                    onClick={handleRangeHint}
+                    aria-label="Get range hint"
+                    disabled={playingDisabled || hintTypesUsed[HINT_TYPES.range]}
+                    title="Range (costs score)"
+                    style={{ borderColor: THEME.secondary, color: THEME.secondary }}
+                  >
+                    Range
+                  </button>
+                  <button
+                    className="ngg-btn-secondary"
+                    type="button"
+                    onClick={handleDigitHint}
+                    aria-label="Get starting digit hint"
+                    disabled={playingDisabled || hintTypesUsed[HINT_TYPES.digit]}
+                    title="Starting digit (costs score)"
+                    style={{ borderColor: THEME.secondary, color: THEME.secondary }}
+                  >
+                    Starts With
+                  </button>
+                  <button
+                    className="ngg-btn-secondary"
+                    type="button"
+                    onClick={handleProximityHint}
+                    aria-label="Get proximity hint"
+                    disabled={playingDisabled || hintTypesUsed[HINT_TYPES.proximity]}
+                    title="Proximity (costs score)"
+                    style={{ borderColor: THEME.secondary, color: THEME.secondary }}
+                  >
+                    Proximity
+                  </button>
+                </div>
+                <p className="ngg-attempts" aria-live="polite" style={{ marginTop: 8 }}>
+                  Hints reduce your score. Each hint type used applies a penalty.
+                </p>
               </>
             )}
           </div>
