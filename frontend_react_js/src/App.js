@@ -4,6 +4,15 @@ import './App.css';
 import successChimeUrl from './assets/success-chime.mp3';
 import LeaderboardModal from './LeaderboardModal';
 import { addResult } from './leaderboard';
+import {
+  LEVELS,
+  LEVEL_ORDER,
+  LEVEL_PRESET_DIFFICULTY,
+  LEVEL_DESCRIPTIONS,
+  readLevelProgress,
+  writeLevelProgress,
+  getNextLevel,
+} from './levels';
 
 /**
  * Number Guessing Game - Ocean Professional themed
@@ -95,8 +104,13 @@ function App() {
    */
   const [theme, setTheme] = useState('light'); // kept to respect existing template behavior
 
+  // Levels: unlocked progress and current level
+  const [unlockedLevels, setUnlockedLevels] = useState(() => readLevelProgress());
+  const [level, setLevel] = useState(() => LEVELS.BEGINNER);
+  const [unlockMessage, setUnlockMessage] = useState(''); // aria-live message for unlocks
+
   // PUBLIC_INTERFACE
-  // difficulty selection persisted in state, default Medium
+  // difficulty selection persisted in state, default Medium; will be preset by level
   const [difficulty, setDifficulty] = useState('medium');
 
   const [range, setRange] = useState(() => {
@@ -152,6 +166,7 @@ function App() {
   const playAgainRef = useRef(null);
   const attemptsLiveRef = useRef(null);
   const historyLiveRef = useRef(null);
+  const unlockLiveRef = useRef(null); // aria-live for level unlocks
 
   // Audio: preload success sound element
   const successAudioRef = useRef(null);
@@ -160,6 +175,18 @@ function App() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  // On mount, load level progress and preset difficulty for current level
+  useEffect(() => {
+    const saved = readLevelProgress();
+    setUnlockedLevels(saved);
+    // Default to Beginner if not unlocked set present
+    const initialLevel = LEVELS.BEGINNER;
+    setLevel(initialLevel);
+    const presetDiff = LEVEL_PRESET_DIFFICULTY[initialLevel] || 'easy';
+    applyDifficultyPreset(presetDiff);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Derived info
   const placeholder = useMemo(
@@ -177,6 +204,23 @@ function App() {
   function generateSecret(min, max) {
     const value = Math.floor(Math.random() * (max - min + 1)) + min;
     return value;
+  }
+
+  // Helper: apply difficulty preset and reset game state
+  function applyDifficultyPreset(nextDifficulty) {
+    setDifficulty(nextDifficulty);
+    const preset = DIFFICULTIES[nextDifficulty];
+    setRange({ min: preset.min, max: preset.max });
+    setSecret(generateSecret(preset.min, preset.max));
+    setInput('');
+    setFeedback('');
+    setAttempts(0);
+    setStatus('playing');
+    setScore(0);
+    resetHints();
+    resetHistory();
+    resetAndMaybeStartTimer(nextDifficulty);
+    setTimeout(() => inputRef.current?.focus(), 0);
   }
 
   /**
@@ -205,11 +249,7 @@ function App() {
     try {
       const el = successAudioRef.current;
       if (!el) return;
-      const prefersReducedMotion =
-        window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
       if (el.muted) return;
-
       el.volume = SUCCESS_SOUND_VOLUME;
       const p = el.play();
       if (p && typeof p.then === 'function') {
@@ -343,6 +383,35 @@ function App() {
     setTimeout(() => inputRef.current?.focus(), 0);
   }
 
+  // PUBLIC_INTERFACE
+  function handleLevelChange(nextLevel) {
+    // Gatekeep: must be unlocked
+    if (!unlockedLevels.has(nextLevel)) return;
+    setLevel(nextLevel);
+    // Apply preset difficulty but allow user to change later
+    const preset = LEVEL_PRESET_DIFFICULTY[nextLevel] || 'medium';
+    applyDifficultyPreset(preset);
+  }
+
+  // Check and unlock next level on a win (single round)
+  function unlockNextLevelIfEligible(currentLevel) {
+    const next = getNextLevel(currentLevel);
+    if (!next) return; // no next level
+    if (unlockedLevels.has(next)) return; // already unlocked
+    const nextSet = new Set(unlockedLevels);
+    nextSet.add(next);
+    setUnlockedLevels(nextSet);
+    writeLevelProgress(nextSet);
+    const msg = `🎉 ${next} unlocked!`;
+    setUnlockMessage(msg);
+    // announce politely
+    setTimeout(() => {
+      if (unlockLiveRef.current) {
+        unlockLiveRef.current.textContent = msg;
+      }
+    }, 0);
+  }
+
   function validateInput(value) {
     if (value.trim() === '') return { ok: false, message: 'Please enter a number.' };
     const num = Number(value);
@@ -427,6 +496,10 @@ function App() {
 
       setFeedback(`Correct! The number was ${secret}. Your score: ${finalScore}.`);
       setStatus('won');
+
+      // Unlock next level for wins only (not losses/timeouts)
+      unlockNextLevelIfEligible(level);
+
       setTimeout(() => playAgainRef.current?.focus(), 0);
       clearTimer();
       return;
@@ -565,6 +638,9 @@ function App() {
     return 'ngg-chip guess-low';
   }
 
+  // UI helpers
+  const isUnlocked = (lvl) => unlockedLevels.has(lvl);
+
   return (
     <div className="App" style={{ background: THEME.background, color: THEME.text }}>
       {/* Hidden/preloaded audio element; will only play on user gesture via handleSubmit */}
@@ -589,7 +665,34 @@ function App() {
               Guess the secret number between {range.min} and {range.max}
             </p>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {/* Levels panel */}
+            <div role="group" aria-label="Select level" style={{ display: 'flex', gap: 6 }}>
+              {LEVEL_ORDER.map((lvl) => {
+                const unlocked = isUnlocked(lvl);
+                const active = lvl === level;
+                return (
+                  <button
+                    key={lvl}
+                    type="button"
+                    className="theme-toggle"
+                    aria-label={`${lvl} level${!unlocked ? ' (locked)' : ''}`}
+                    aria-pressed={active}
+                    onClick={() => unlocked && handleLevelChange(lvl)}
+                    disabled={!unlocked}
+                    title={!unlocked ? `${lvl} is locked` : `${lvl}: ${LEVEL_DESCRIPTIONS[lvl]}`}
+                    style={{
+                      opacity: unlocked ? 1 : 0.5,
+                      border: active ? `2px solid ${THEME.secondary}` : 'none',
+                      background: active ? THEME.primary : undefined,
+                    }}
+                  >
+                    {unlocked ? '🔓' : '🔒'} {lvl}
+                  </button>
+                );
+              })}
+            </div>
+
             <button
               className="theme-toggle"
               onClick={toggleTheme}
@@ -612,6 +715,11 @@ function App() {
         <section className="ngg-card" aria-labelledby="game-section-title">
           <div className="ngg-card-gradient" aria-hidden="true" />
           <h2 id="game-section-title" className="sr-only">Game controls</h2>
+
+          {/* Level unlock aria-live region */}
+          <div className="sr-only" aria-live="polite" aria-atomic="true" ref={unlockLiveRef}>
+            {unlockMessage}
+          </div>
 
           {/* Difficulty selector and Timer Mode toggle */}
           <div className="ngg-form" role="group" aria-labelledby="difficulty-label">
