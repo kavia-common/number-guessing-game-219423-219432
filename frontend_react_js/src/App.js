@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
+import { useTranslation } from 'react-i18next';
 // Import success sound from src so CRA bundles and serves the correct URL
 import successChimeUrl from './assets/success-chime.mp3';
 import LeaderboardModal from './LeaderboardModal';
@@ -101,6 +102,13 @@ function formatSeconds(total) {
  * Manages theme, game state, and renders the UI.
  */
 function App() {
+  const { t, i18n } = useTranslation();
+  const [lang, setLang] = useState(() => i18n.language || 'en');
+  useEffect(() => {
+    if (lang !== i18n.language) {
+      i18n.changeLanguage(lang);
+    }
+  }, [lang, i18n]);
   /** State
    * Place 'range' before any usage in initializers to avoid TDZ issues.
    */
@@ -206,8 +214,8 @@ function App() {
 
   // Derived info
   const placeholder = useMemo(
-    () => `Enter a number (${range.min}-${range.max})`,
-    [range]
+    () => t('guessPlaceholder', { min: range.min, max: range.max }),
+    [range, t]
   );
 
   // PUBLIC_INTERFACE
@@ -304,7 +312,7 @@ function App() {
             // Timeout reached -> loss state (no success sound here)
             clearTimer();
             setStatus('timeout');
-            setFeedback("Time's up! Round over.");
+            setFeedback(t('feedback_timeout_round_over'));
             // Do not alter history on timeout per requirements
             setTimeout(() => playAgainRef.current?.focus(), 0);
             return 0;
@@ -345,7 +353,7 @@ function App() {
     const announce = timeLeft <= 10 || timeLeft % 5 === 0 || timeLeft === TIMER_DEFAULTS[difficulty];
     if (announce && lastAnnouncedRef.current !== timeLeft) {
       lastAnnouncedRef.current = timeLeft;
-      return `Time remaining: ${formatSeconds(timeLeft)}.`;
+      return `⏱ ${formatSeconds(timeLeft)}`;
     }
     return '';
   }, [timeLeft, timerMode, status, difficulty]);
@@ -432,12 +440,12 @@ function App() {
   }
 
   function validateInput(value) {
-    if (value.trim() === '') return { ok: false, message: 'Please enter a number.' };
+    if (value.trim() === '') return { ok: false, message: t('guessLabel') };
     const num = Number(value);
-    if (Number.isNaN(num)) return { ok: false, message: 'That is not a valid number.' };
-    if (!Number.isInteger(num)) return { ok: false, message: 'Please enter a whole number.' };
+    if (Number.isNaN(num)) return { ok: false, message: t('submitGuessTitle') };
+    if (!Number.isInteger(num)) return { ok: false, message: t('submitGuessTitle') };
     if (num < range.min || num > range.max) {
-      return { ok: false, message: `Enter a number between ${range.min} and ${range.max}.` };
+      return { ok: false, message: t('guessPlaceholder', { min: range.min, max: range.max }) };
     }
     return { ok: true, value: num };
   }
@@ -462,7 +470,7 @@ function App() {
 
     // Prevent repeated guesses: warn and ignore, do not decrement attempts, do not add to history
     if (isRepeatGuess(guess)) {
-      const msg = `You already guessed ${guess}.`;
+      const msg = t('repeat_warning', { guess });
       setRepeatWarning(msg);
       // subtle focus for SR users; don't change attempts
       setTimeout(() => feedbackRef.current?.focus(), 0);
@@ -490,7 +498,7 @@ function App() {
       const entry = makeHistoryEntry(prev.length + 1, guess, resultLabel);
       const next = [...prev, entry];
       // Announce politely for screen readers
-      setHistoryLive(`Guess ${guess}, ${resultLabel}.`);
+      setHistoryLive(t('history_item_aria', { value: guess, result: resultLabel }));
       return next;
     });
 
@@ -513,7 +521,7 @@ function App() {
 
       await playSuccessSound();
 
-      setFeedback(`Correct! The number was ${secret}. Your score: ${finalScore}.`);
+      setFeedback(t('feedback_correct', { secret, score: finalScore }));
       setStatus('won');
 
       // Unlock next level for wins only (not losses/timeouts)
@@ -531,7 +539,7 @@ function App() {
           setRoundNewlyUnlocked(newly);
           if (newly.length > 0) {
             const titles = newly.map(k => ACHIEVEMENT_META[k]?.title || k).join(' & ');
-            const msg = `Achievement unlocked: ${titles}!`;
+            const msg = t('achievement_unlocked_toast', { titles });
             setAchToast(msg);
             setTimeout(() => {
               if (achLiveRef.current) achLiveRef.current.textContent = msg;
@@ -553,9 +561,9 @@ function App() {
 
     // Incorrect guess path
     if (resultLabel === 'too low') {
-      setFeedback('Too low. Try a higher number.');
+      setFeedback(t('feedback_low'));
     } else {
-      setFeedback('Too high. Try a lower number.');
+      setFeedback(t('feedback_high'));
     }
     vibrateOnWrongGuess();
     setTimeout(() => feedbackRef.current?.focus(), 0);
@@ -564,7 +572,7 @@ function App() {
     const remaining = maxAttempts - nextAttempts;
     if (remaining <= 0) {
       setStatus('out_of_attempts');
-      setFeedback('Out of attempts! Round over.');
+      setFeedback(t('feedback_out_attempts'));
       setTimeout(() => playAgainRef.current?.focus(), 0);
       clearTimer();
     }
@@ -587,8 +595,8 @@ function App() {
   // PUBLIC_INTERFACE
   function handleParityHint() {
     if (status !== 'playing') return;
-    const parity = secret % 2 === 0 ? 'even' : 'odd';
-    announceHint(`Hint: The number is ${parity}.`, HINT_TYPES.parity);
+    const parity = secret % 2 === 0 ? t('hint_parity_text', { parity: 'even' }) : t('hint_parity_text', { parity: 'odd' });
+    announceHint(parity, HINT_TYPES.parity);
   }
 
   // PUBLIC_INTERFACE
@@ -610,7 +618,7 @@ function App() {
     if (secret < start) start = secret;
     if (secret > end) end = secret;
 
-    const text = `Hint: The number is between ${start}–${end}.`;
+    const text = t('hint_range_text', { start, end });
     announceHint(text, HINT_TYPES.range);
   }
 
@@ -621,8 +629,8 @@ function App() {
     const startDigit = s[0];
     const text =
       s.length === 1
-        ? `Hint: It's a single-digit number and starts with ${startDigit}.`
-        : `Hint: The number starts with ${startDigit}.`;
+        ? t('hint_digit_text_single', { digit: startDigit })
+        : t('hint_digit_text_multi', { digit: startDigit });
     announceHint(text, HINT_TYPES.digit);
   }
 
@@ -630,10 +638,10 @@ function App() {
   function handleProximityHint() {
     if (status !== 'playing') return;
     if (attempts <= 0) {
-      announceHint('Hint: Make at least one guess to get a proximity hint.', HINT_TYPES.proximity);
+      announceHint(t('hint_proximity_need_guess'), HINT_TYPES.proximity);
       return;
     }
-    let msg = 'Hint: ';
+    let msg = '';
     const thresholdVeryClose = 3;
     const thresholdHot = 6;
     const thresholdWarm = 12;
@@ -647,18 +655,18 @@ function App() {
     if (lastGuess != null) {
       const delta = Math.abs(secret - lastGuess);
       if (delta === 0) {
-        msg += 'You already have the correct number!';
+        msg = t('hint_proximity_already_correct');
       } else if (delta <= thresholdVeryClose) {
-        msg += 'You are very close.';
+        msg = t('hint_proximity_very_close');
       } else if (delta <= thresholdHot) {
-        msg += 'Hot.';
+        msg = t('hint_proximity_hot');
       } else if (delta <= thresholdWarm) {
-        msg += 'Warm.';
+        msg = t('hint_proximity_warm');
       } else {
-        msg += 'Cold.';
+        msg = t('hint_proximity_cold');
       }
     } else {
-      msg += 'Proximity available after a valid guess.';
+      msg = t('hint_proximity_after_valid');
     }
 
     announceHint(msg, HINT_TYPES.proximity);
@@ -706,14 +714,14 @@ function App() {
       <header className="ngg-header">
         <div className="ngg-header-inner">
           <div className="ngg-title-wrap">
-            <h1 className="ngg-title">Number Guessing Game</h1>
+            <h1 className="ngg-title">{t('appTitle')}</h1>
             <p className="ngg-subtitle">
-              Guess the secret number between {range.min} and {range.max}
+              {t('appSubtitle', { min: range.min, max: range.max })}
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             {/* Levels panel */}
-            <div role="group" aria-label="Select level" style={{ display: 'flex', gap: 6 }}>
+            <div role="group" aria-label={t('levels')} style={{ display: 'flex', gap: 6 }}>
               {LEVEL_ORDER.map((lvl) => {
                 const unlocked = isUnlocked(lvl);
                 const active = lvl === level;
@@ -722,44 +730,61 @@ function App() {
                     key={lvl}
                     type="button"
                     className="theme-toggle"
-                    aria-label={`${lvl} level${!unlocked ? ' (locked)' : ''}`}
+                    aria-label={`${t(`level_${lvl}`)} ${t('levels')}${!unlocked ? ' ' + t('levelLocked') : ''}`}
                     aria-pressed={active}
                     onClick={() => unlocked && handleLevelChange(lvl)}
                     disabled={!unlocked}
-                    title={!unlocked ? `${lvl} is locked` : `${lvl}: ${LEVEL_DESCRIPTIONS[lvl]}`}
+                    title={!unlocked ? `${t(`level_${lvl}`)} ${t('levelLocked')}` : `${t(`level_${lvl}`)}: ${LEVEL_DESCRIPTIONS[lvl]}`}
                     style={{
                       opacity: unlocked ? 1 : 0.5,
                       border: active ? `2px solid ${THEME.secondary}` : 'none',
                       background: active ? THEME.primary : undefined,
                     }}
                   >
-                    {unlocked ? '🔓' : '🔒'} {lvl}
+                    {unlocked ? t('levelUnlockedEmoji') : t('levelLockedEmoji')} {t(`level_${lvl}`)}
                   </button>
                 );
               })}
             </div>
 
+            <label htmlFor="lang" className="ngg-label" style={{ marginRight: 6 }}>
+              {t('language_label')}
+            </label>
+            <select
+              id="lang"
+              aria-label={t('language_label')}
+              className="ngg-input"
+              style={{ maxWidth: 140 }}
+              value={lang}
+              onChange={(e) => setLang(e.target.value)}
+              data-testid="language-select"
+            >
+              <option value="en">{t('language_en')}</option>
+              <option value="te">{t('language_te')}</option>
+              <option value="hi">{t('language_hi')}</option>
+            </select>
+
             <button
               className="theme-toggle"
               onClick={toggleTheme}
-              aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+              aria-label={`${t('themeLabel')}: ${theme === 'light' ? t('themeToggleDark') : t('themeToggleLight')}`}
             >
-              {theme === 'light' ? '🌙 Dark' : '☀️ Light'}
+              {theme === 'light' ? t('themeToggleDark') : t('themeToggleLight')}
             </button>
             <button
               className="theme-toggle"
               onClick={() => setLeaderboardOpen(true)}
-              aria-label="Open leaderboard"
+              aria-label={t('openLeaderboard')}
             >
-              🏆 Leaderboard
+              {t('openLeaderboard')}
             </button>
             <button
               className="theme-toggle"
               onClick={() => setAchievementsOpen(true)}
-              aria-label="Open achievements"
-              title="View achievements"
+              aria-label={t('openAchievements')}
+              title={t('openAchievements')}
             >
-              🥇 Achievements
+              {t('openAchievements')}
             </button>
           </div>
         </div>
@@ -789,19 +814,19 @@ function App() {
           {/* Difficulty selector and Timer Mode toggle */}
           <div className="ngg-form" role="group" aria-labelledby="difficulty-label">
             <label id="difficulty-label" htmlFor="difficulty" className="ngg-label">
-              Select difficulty
+              {t('difficultyLabel')}
             </label>
             <div className="ngg-input-row" style={{ gridTemplateColumns: '1fr' }}>
               <select
                 id="difficulty"
-                aria-label="Select difficulty"
+                aria-label={t('difficultyLabel')}
                 className="ngg-input"
                 value={difficulty}
                 onChange={handleDifficultyChange}
               >
-                <option value="easy">Easy (1-20)</option>
-                <option value="medium">Medium (1-50)</option>
-                <option value="hard">Hard (1-100)</option>
+                <option value="easy">{t('difficultyEasy')}</option>
+                <option value="medium">{t('difficultyMedium')}</option>
+                <option value="hard">{t('difficultyHard')}</option>
               </select>
             </div>
 
@@ -812,10 +837,10 @@ function App() {
                   type="checkbox"
                   checked={timerMode}
                   onChange={(e) => setTimerMode(e.target.checked)}
-                  aria-label="Enable Timer Mode"
+                  aria-label={t('timerEnableLabel')}
                 />
                 <label htmlFor="timerMode" className="ngg-label" style={{ margin: 0 }}>
-                  Enable Timer Mode
+                  {t('timerEnableLabel')}
                 </label>
               </div>
               {timerMode && status === 'playing' && (
@@ -831,7 +856,7 @@ function App() {
               )}
               {timerMode && status === 'timeout' && (
                 <div aria-live="polite" className="ngg-attempts" style={{ textAlign: 'right', color: THEME.error }}>
-                  ⏱ Time’s up!
+                  ⏱ {t('timerUp')}
                 </div>
               )}
             </div>
@@ -839,7 +864,7 @@ function App() {
 
           <form className="ngg-form" onSubmit={handleSubmit}>
             <label htmlFor="guess" className="ngg-label">
-              Enter your guess
+              {t('guessLabel')}
             </label>
             <div className="ngg-input-row">
               <input
@@ -865,9 +890,9 @@ function App() {
                 style={{ backgroundColor: THEME.primary }}
                 disabled={playingDisabled || (input && isRepeatGuess(Number(input)))}
                 aria-disabled={playingDisabled || (input && isRepeatGuess(Number(input)))}
-                title={input && isRepeatGuess(Number(input)) ? `You already guessed ${Number(input)}` : 'Submit guess'}
+                title={input && isRepeatGuess(Number(input)) ? t('repeat_warning', { guess: Number(input) }) : t('submitGuessTitle')}
               >
-                Guess
+                {t('guessButton')}
               </button>
             </div>
           </form>
@@ -880,7 +905,7 @@ function App() {
               className={`ngg-feedback ${status === 'won' ? 'won' : feedback ? 'hint' : ''} ${status === 'won' && !prefersReducedMotion ? 'ngg-bounce' : ''}`}
               aria-live="polite"
             >
-              {feedback || 'Make a guess to begin!'}
+              {feedback || t('feedback_start')}
             </p>
 
             {/* Repeat warning inline, non-disruptive */}
@@ -893,25 +918,25 @@ function App() {
             {/* Attempts Counters */}
             <div aria-live="polite" aria-atomic="true">
               <p id="attempts" className="ngg-attempts">
-                Attempts used: <strong>{attempts}</strong>
+                {t('attempts_used', { count: attempts })}
               </p>
               <p className="ngg-attempts">
-                Attempts remaining: <strong aria-live="polite" ref={attemptsLiveRef}>{attemptsRemaining}</strong>
-                <span className="sr-only">{attemptsLiveText}</span>
+                {t('attempts_remaining', { count: attemptsRemaining })} <strong aria-live="polite" ref={attemptsLiveRef}>{attemptsRemaining}</strong>
+                <span className="sr-only">{t('attempts_remaining', { count: attemptsRemaining })}</span>
               </p>
             </div>
 
             {status === 'won' && (
               <>
                 <p id="score" className="ngg-attempts" aria-live="polite">
-                  Score: <strong>{score}</strong>
+                  {t('score_label', { score })}
                 </p>
                 {roundNewlyUnlocked.length > 0 && (
                   <div className="ngg-ach-wrap" aria-live="polite">
                     {roundNewlyUnlocked.map((key) => {
                       const meta = ACHIEVEMENT_META[key];
                       return (
-                        <span key={key} className="ngg-ach-chip" role="img" aria-label={`${meta.title} unlocked`}>
+                        <span key={key} className="ngg-ach-chip" role="img" aria-label={`${meta.title} ${t('achievements_unlocked')}`}>
                           {meta.emoji} {meta.title}
                         </span>
                       );
@@ -921,7 +946,7 @@ function App() {
               </>
             )}
             <p className="ngg-attempts" aria-live="polite">
-              Current range: <strong>{range.min}</strong> to <strong>{range.max}</strong> ({DIFFICULTIES[difficulty].label})
+              {t('current_range', { min: range.min, max: range.max, label: t(`difficulty_${difficulty}`) })}
             </p>
           </div>
 
@@ -931,14 +956,14 @@ function App() {
             style={{ marginTop: 12 }}
           >
             <h3 id="guess-history-title" className="ngg-label" style={{ marginBottom: 8 }}>
-              Guess History
+              {t('history_title')}
             </h3>
             <div className="sr-only" aria-live="polite" aria-atomic="true" ref={historyLiveRef}>
               {historyLive}
             </div>
             <ul
               role="list"
-              aria-label="List of previous guesses"
+              aria-label={t('history_title')}
               style={{
                 listStyle: 'none',
                 margin: 0,
@@ -951,13 +976,13 @@ function App() {
               }}
             >
               {history.length === 0 ? (
-                <li className="ngg-empty" aria-label="No guesses yet">No guesses yet.</li>
+                <li className="ngg-empty" aria-label={t('history_none')}>{t('history_none')}</li>
               ) : (
                 history.map((h) => (
                   <li
                     key={h.id}
                     role="listitem"
-                    aria-label={`Guess ${h.value}, ${h.result}`}
+                    aria-label={t('history_item_aria', { value: h.value, result: h.result })}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -983,7 +1008,7 @@ function App() {
                   onClick={resetGame}
                   style={{ borderColor: THEME.secondary, color: THEME.secondary }}
                 >
-                  {status === 'won' ? 'Play Again' : 'New Game'}
+                  {status === 'won' ? t('play_again') : t('new_game')}
                 </button>
               </>
             ) : (
@@ -994,58 +1019,58 @@ function App() {
                   type="button"
                   style={{ borderColor: THEME.secondary, color: THEME.secondary, marginRight: 8 }}
                 >
-                  Reset
+                  {t('reset')}
                 </button>
 
                 {/* Hints */}
-                <div role="group" aria-label="Hint options" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                <div role="group" aria-label={t('hint_group')} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
                   <button
                     className="ngg-btn-secondary"
                     type="button"
                     onClick={handleParityHint}
-                    aria-label="Get parity hint (even or odd)"
+                    aria-label={t('hint_parity_aria')}
                     disabled={playingDisabled || hintTypesUsed[HINT_TYPES.parity]}
-                    title="Parity (costs score)"
+                    title={t('hint_parity_aria')}
                     style={{ borderColor: THEME.secondary, color: THEME.secondary }}
                   >
-                    Even/Odd
+                    {t('hint_parity_btn')}
                   </button>
                   <button
                     className="ngg-btn-secondary"
                     type="button"
                     onClick={handleRangeHint}
-                    aria-label="Get range hint"
+                    aria-label={t('hint_range_aria')}
                     disabled={playingDisabled || hintTypesUsed[HINT_TYPES.range]}
-                    title="Range (costs score)"
+                    title={t('hint_range_aria')}
                     style={{ borderColor: THEME.secondary, color: THEME.secondary }}
                   >
-                    Range
+                    {t('hint_range_btn')}
                   </button>
                   <button
                     className="ngg-btn-secondary"
                     type="button"
                     onClick={handleDigitHint}
-                    aria-label="Get starting digit hint"
+                    aria-label={t('hint_digit_aria')}
                     disabled={playingDisabled || hintTypesUsed[HINT_TYPES.digit]}
-                    title="Starting digit (costs score)"
+                    title={t('hint_digit_aria')}
                     style={{ borderColor: THEME.secondary, color: THEME.secondary }}
                   >
-                    Starts With
+                    {t('hint_digit_btn')}
                   </button>
                   <button
                     className="ngg-btn-secondary"
                     type="button"
                     onClick={handleProximityHint}
-                    aria-label="Get proximity hint"
+                    aria-label={t('hint_proximity_aria')}
                     disabled={playingDisabled || hintTypesUsed[HINT_TYPES.proximity]}
-                    title="Proximity (costs score)"
+                    title={t('hint_proximity_aria')}
                     style={{ borderColor: THEME.secondary, color: THEME.secondary }}
                   >
-                    Proximity
+                    {t('hint_proximity_btn')}
                   </button>
                 </div>
                 <p className="ngg-attempts" aria-live="polite" style={{ marginTop: 8 }}>
-                  Hints reduce your score. Each hint type used applies a penalty.
+                  {t('hints_note')}
                 </p>
               </>
             )}
@@ -1054,7 +1079,7 @@ function App() {
 
         <footer className="ngg-footer">
           <p>
-            Theme: <strong>{THEME.name}</strong>
+            {t('themeLabel')}: <strong>{THEME.name}</strong>
           </p>
         </footer>
       </main>

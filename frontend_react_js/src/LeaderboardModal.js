@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { clearResults, getBestAttempts, getHighScores, readResults } from './leaderboard';
 
 // PUBLIC_INTERFACE
 export default function LeaderboardModal({ open, onClose }) {
   /** Accessible modal dialog with two tabs: High Scores and Best Attempts */
   const [tab, setTab] = useState('scores'); // 'scores' | 'attempts'
+  const { t } = useTranslation();
   const [scores, setScores] = useState([]);
   const [attempts, setAttempts] = useState([]);
   const [hasData, setHasData] = useState(false);
@@ -39,7 +41,7 @@ export default function LeaderboardModal({ open, onClose }) {
   }
 
   function handleClear() {
-    const ok = window.confirm('Clear all leaderboard entries? This action cannot be undone.');
+    const ok = window.confirm(t('leaderboard_clear_confirm'));
     if (!ok) return;
     clearResults();
     refresh();
@@ -65,20 +67,20 @@ export default function LeaderboardModal({ open, onClose }) {
       <div className="ngg-leaderboard-modal" ref={dialogRef}>
         <div className="ngg-leaderboard-header">
           <h2 id="leaderboard-title" className="ngg-leaderboard-title">
-            Leaderboard
+            {t('leaderboard_title')}
           </h2>
           <button
             ref={closeBtnRef}
             className="ngg-btn-secondary"
             style={{ borderColor: 'var(--ocean-secondary)', color: 'var(--ocean-secondary)' }}
             onClick={() => onClose?.()}
-            aria-label="Close leaderboard"
+            aria-label={t('leaderboard_close')}
           >
-            Close
+            {t('leaderboard_close')}
           </button>
         </div>
 
-        <div className="ngg-leaderboard-tabs" role="tablist" aria-label="Leaderboard views">
+        <div className="ngg-leaderboard-tabs" role="tablist" aria-label={t('leaderboard_views')}>
           <button
             role="tab"
             aria-selected={tab === 'scores'}
@@ -87,7 +89,7 @@ export default function LeaderboardModal({ open, onClose }) {
             className={`ngg-tab ${tab === 'scores' ? 'active' : ''}`}
             onClick={() => setTab('scores')}
           >
-            High Scores
+            {t('leaderboard_tab_scores')}
           </button>
           <button
             role="tab"
@@ -97,16 +99,16 @@ export default function LeaderboardModal({ open, onClose }) {
             className={`ngg-tab ${tab === 'attempts' ? 'active' : ''}`}
             onClick={() => setTab('attempts')}
           >
-            Best Attempts
+            {t('leaderboard_tab_attempts')}
           </button>
           <div style={{ flex: 1 }} />
           <button
             className="ngg-btn-secondary"
             style={{ borderColor: 'var(--ocean-error)', color: 'var(--ocean-error)' }}
             onClick={handleClear}
-            aria-label="Clear leaderboard"
+            aria-label={t('leaderboard_clear')}
           >
-            Clear Leaderboard
+            {t('leaderboard_clear')}
           </button>
         </div>
 
@@ -119,7 +121,7 @@ export default function LeaderboardModal({ open, onClose }) {
               className="ngg-leaderboard-list"
             >
               {scores.length === 0 ? (
-                <li className="ngg-empty">No results yet.</li>
+                <li className="ngg-empty">{t('leaderboard_empty')}</li>
               ) : (
                 scores.map((r) => <LeaderboardRow key={r.id} entry={r} variant="score" />)
               )}
@@ -143,7 +145,7 @@ export default function LeaderboardModal({ open, onClose }) {
 
         {!hasData && (
           <div className="ngg-leaderboard-hint">
-            Play and win a game to add your first leaderboard entry!
+            {t('leaderboard_hint')}
           </div>
         )}
       </div>
@@ -161,12 +163,14 @@ function formatDate(ts) {
 }
 
 function DifficultyTag({ difficulty }) {
-  const label =
-    difficulty === 'easy' ? 'Easy' : difficulty === 'hard' ? 'Hard' : 'Medium';
+  const { t } = useTranslation();
+  const key = difficulty === 'easy' ? 'difficulty_easy' : difficulty === 'hard' ? 'difficulty_hard' : 'difficulty_medium';
+  const label = t(key);
   return <span className={`ngg-chip diff-${difficulty}`}>{label}</span>;
 }
 
 function LeaderboardRow({ entry, variant }) {
+  const { t } = useTranslation();
   return (
     <li className="ngg-leaderboard-item">
       <div className="ngg-leaderboard-meta">
@@ -175,10 +179,10 @@ function LeaderboardRow({ entry, variant }) {
       </div>
       <div className="ngg-leaderboard-stats">
         <span className="ngg-stat">
-          Attempts: <strong>{entry.attempts}</strong>
+          {t('attempts_label', { count: entry.attempts })}
         </span>
         <span className="ngg-stat">
-          Score: <strong>{entry.score}</strong>
+          {t('score_label', { score: entry.score })}
         </span>
       </div>
     </li>
