@@ -3,7 +3,7 @@ import './App.css';
 
 /**
  * Number Guessing Game - Ocean Professional themed
- * Single page, centered layout with header, guess input, feedback, attempts, and reset button.
+ * Single page, centered layout with header, guess input, difficulty selector, feedback, attempts, and reset button.
  * Self-contained; no backend calls. Includes keyboard accessibility and focus management.
  */
 
@@ -19,6 +19,13 @@ const THEME = {
   text: '#111827',
 };
 
+// Difficulty presets
+const DIFFICULTIES = {
+  easy: { label: 'Easy', min: 1, max: 20 },
+  medium: { label: 'Medium', min: 1, max: 50 },
+  hard: { label: 'Hard', min: 1, max: 100 },
+};
+
 /** PUBLIC_INTERFACE
  * Main application component for the Number Guessing Game.
  * Manages theme, game state, and renders the UI.
@@ -28,11 +35,20 @@ function App() {
    * Place 'range' before any usage in initializers to avoid TDZ issues.
    */
   const [theme, setTheme] = useState('light'); // kept to respect existing template behavior
-  const [range, setRange] = useState({ min: 1, max: 100 });
+
+  // PUBLIC_INTERFACE
+  // difficulty selection persisted in state, default Medium
+  const [difficulty, setDifficulty] = useState('medium');
+
+  const [range, setRange] = useState(() => {
+    const d = DIFFICULTIES['medium'];
+    return { min: d.min, max: d.max };
+  });
+
   const [secret, setSecret] = useState(() => {
     // initialize secret using explicit min/max to avoid referencing 'range' before it's initialized
-    const { min, max } = { min: 1, max: 100 };
-    return generateSecret(min, max);
+    const d = DIFFICULTIES['medium'];
+    return generateSecret(d.min, d.max);
   });
   const [input, setInput] = useState('');
   const [feedback, setFeedback] = useState('');
@@ -67,6 +83,7 @@ function App() {
     return value;
   }
 
+  // PUBLIC_INTERFACE
   function resetGame() {
     // re-generate secret using the current range
     setSecret(generateSecret(range.min, range.max));
@@ -75,6 +92,23 @@ function App() {
     setAttempts(0);
     setStatus('playing');
     // After reset, move focus back to input for keyboard flow
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }
+
+  // PUBLIC_INTERFACE
+  function handleDifficultyChange(e) {
+    const next = e.target.value;
+    setDifficulty(next);
+    const preset = DIFFICULTIES[next];
+    // Update range first so UI reflects immediately
+    setRange({ min: preset.min, max: preset.max });
+    // Regenerate secret and reset counters and feedback
+    setSecret(generateSecret(preset.min, preset.max));
+    setInput('');
+    setFeedback('');
+    setAttempts(0);
+    setStatus('playing');
+    // keep focus accessible to selector change; move focus to input for play flow
     setTimeout(() => inputRef.current?.focus(), 0);
   }
 
@@ -131,7 +165,9 @@ function App() {
         <div className="ngg-header-inner">
           <div className="ngg-title-wrap">
             <h1 className="ngg-title">Number Guessing Game</h1>
-            <p className="ngg-subtitle">Guess the secret number between {range.min} and {range.max}</p>
+            <p className="ngg-subtitle">
+              Guess the secret number between {range.min} and {range.max}
+            </p>
           </div>
           <button
             className="theme-toggle"
@@ -147,6 +183,26 @@ function App() {
         <section className="ngg-card" aria-labelledby="game-section-title">
           <div className="ngg-card-gradient" aria-hidden="true" />
           <h2 id="game-section-title" className="sr-only">Game controls</h2>
+
+          {/* Difficulty selector */}
+          <div className="ngg-form" role="group" aria-labelledby="difficulty-label">
+            <label id="difficulty-label" htmlFor="difficulty" className="ngg-label">
+              Select difficulty
+            </label>
+            <div className="ngg-input-row" style={{ gridTemplateColumns: '1fr' }}>
+              <select
+                id="difficulty"
+                aria-label="Select difficulty"
+                className="ngg-input"
+                value={difficulty}
+                onChange={handleDifficultyChange}
+              >
+                <option value="easy">Easy (1-20)</option>
+                <option value="medium">Medium (1-50)</option>
+                <option value="hard">Hard (1-100)</option>
+              </select>
+            </div>
+          </div>
 
           <form className="ngg-form" onSubmit={handleSubmit}>
             <label htmlFor="guess" className="ngg-label">
@@ -193,6 +249,9 @@ function App() {
             </p>
             <p id="attempts" className="ngg-attempts">
               Attempts: <strong>{attempts}</strong>
+            </p>
+            <p className="ngg-attempts" aria-live="polite">
+              Current range: <strong>{range.min}</strong> to <strong>{range.max}</strong> ({DIFFICULTIES[difficulty].label})
             </p>
           </div>
 
