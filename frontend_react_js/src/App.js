@@ -63,6 +63,18 @@ const HINT_TYPES = {
   proximity: 'proximity',
 };
 
+// PUBLIC_INTERFACE
+// Guess history entry shape helper
+function makeHistoryEntry(index, value, result) {
+  return {
+    index,
+    value,
+    result, // 'too low' | 'too high' | 'correct'
+    ts: Date.now(),
+    id: `${Date.now()}-${index}-${value}-${result}`,
+  };
+}
+
 /** PUBLIC_INTERFACE
  * Format seconds to mm:ss (or s for under a minute if desired)
  */
@@ -123,6 +135,11 @@ function App() {
   const attemptsRemaining = Math.max(0, maxAttempts - attempts);
   const attemptsLiveText = `Attempts remaining: ${attemptsRemaining}.`;
 
+  // Guess History state: array of { index, value, result, ts, id }
+  const [history, setHistory] = useState([]);
+  const [repeatWarning, setRepeatWarning] = useState(''); // inline warning for repeated guesses
+  const [historyLive, setHistoryLive] = useState(''); // aria-live updates for history
+
   // Timer Mode
   const [timerMode, setTimerMode] = useState(false);
   const [timeLeft, setTimeLeft] = useState(TIMER_DEFAULTS[difficulty]);
@@ -134,6 +151,7 @@ function App() {
   const feedbackRef = useRef(null);
   const playAgainRef = useRef(null);
   const attemptsLiveRef = useRef(null);
+  const historyLiveRef = useRef(null);
 
   // Audio: preload success sound element
   const successAudioRef = useRef(null);
@@ -187,13 +205,11 @@ function App() {
     try {
       const el = successAudioRef.current;
       if (!el) return;
-      // Respect a simple "muted" or reduced motion preference to avoid disruptive feedback
       const prefersReducedMotion =
         window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
       if (el.muted) return;
 
-      // Set volume once before play
       el.volume = SUCCESS_SOUND_VOLUME;
       const p = el.play();
       if (p && typeof p.then === 'function') {
@@ -232,6 +248,7 @@ function App() {
             clearTimer();
             setStatus('timeout');
             setFeedback("Time's up! Round over.");
+            // Do not alter history on timeout per requirements
             setTimeout(() => playAgainRef.current?.focus(), 0);
             return 0;
           }
@@ -287,6 +304,13 @@ function App() {
     setLastHint('');
   }
 
+  // Reset guess history for new round
+  function resetHistory() {
+    setHistory([]);
+    setRepeatWarning('');
+    setHistoryLive('');
+  }
+
   // PUBLIC_INTERFACE
   function resetGame() {
     setSecret(generateSecret(range.min, range.max));
@@ -296,6 +320,7 @@ function App() {
     setStatus('playing');
     setScore(0);
     resetHints();
+    resetHistory();
     resetAndMaybeStartTimer(difficulty);
     setTimeout(() => inputRef.current?.focus(), 0);
   }
@@ -313,6 +338,7 @@ function App() {
     setStatus('playing');
     setScore(0);
     resetHints();
+    resetHistory();
     resetAndMaybeStartTimer(next);
     setTimeout(() => inputRef.current?.focus(), 0);
   }
@@ -328,6 +354,11 @@ function App() {
     return { ok: true, value: num };
   }
 
+  // Check if guess was already made in current round
+  function isRepeatGuess(num) {
+    return history.some((h) => h.value === num);
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     if (status === 'won' || status === 'timeout' || status === 'out_of_attempts') return;
@@ -340,10 +371,42 @@ function App() {
     }
 
     const guess = validation.value;
+
+    // Prevent repeated guesses: warn and ignore, do not decrement attempts, do not add to history
+    if (isRepeatGuess(guess)) {
+      const msg = `You already guessed ${guess}.`;
+      setRepeatWarning(msg);
+      // subtle focus for SR users; don't change attempts
+      setTimeout(() => feedbackRef.current?.focus(), 0);
+      return;
+    } else {
+      // clear any prior repeat warning on a new, unique guess
+      if (repeatWarning) setRepeatWarning('');
+    }
+
     const nextAttempts = attempts + 1;
+    let resultLabel = '';
+    if (guess === secret) {
+      resultLabel = 'correct';
+    } else if (guess < secret) {
+      resultLabel = 'too low';
+    } else {
+      resultLabel = 'too high';
+    }
+
+    // Update attempts only for first-time valid guesses
     setAttempts(nextAttempts);
 
-    if (guess === secret) {
+    // Update guess history
+    setHistory((prev) => {
+      const entry = makeHistoryEntry(prev.length + 1, guess, resultLabel);
+      const next = [...prev, entry];
+      // Announce politely for screen readers
+      setHistoryLive(`Guess ${guess}, ${resultLabel}.`);
+      return next;
+    });
+
+    if (resultLabel === 'correct') {
       const baseScore = computeScore(nextAttempts, range.max);
       const penalty = Math.min(baseScore, hintCount * HINT_PENALTY);
       const finalScore = Math.max(0, baseScore - penalty);
@@ -370,7 +433,7 @@ function App() {
     }
 
     // Incorrect guess path
-    if (guess < secret) {
+    if (resultLabel === 'too low') {
       setFeedback('Too low. Try a higher number.');
     } else {
       setFeedback('Too high. Try a lower number.');
@@ -412,9 +475,7 @@ function App() {
   // PUBLIC_INTERFACE
   function handleRangeHint() {
     if (status !== 'playing') return;
-    // Create a subrange around the secret within difficulty bounds
     const totalSpan = range.max - range.min + 1;
-    // target a subrange about one third of the current span, min width 5, max width totalSpan - 2
     const targetWidth = Math.min(Math.max(5, Math.floor(totalSpan / 3)), Math.max(3, totalSpan - 2));
     const half = Math.floor(targetWidth / 2);
     let start = Math.max(range.min, secret - half);
@@ -423,13 +484,10 @@ function App() {
       end = range.max;
       start = Math.max(range.min, end - targetWidth + 1);
     }
-    // Ensure it doesn't collapse to entire range
     if (start === range.min && end === range.max && totalSpan > 5) {
-      // shrink by 1 on each side if possible
       start = range.min + 1;
       end = range.max - 1;
     }
-    // Ensure secret is inside
     if (secret < start) start = secret;
     if (secret > end) end = secret;
 
@@ -442,7 +500,6 @@ function App() {
     if (status !== 'playing') return;
     const s = String(secret);
     const startDigit = s[0];
-    // If single-digit, it reveals the number — but allowed by requirement to handle gracefully
     const text =
       s.length === 1
         ? `Hint: It's a single-digit number and starts with ${startDigit}.`
@@ -457,17 +514,12 @@ function App() {
       announceHint('Hint: Make at least one guess to get a proximity hint.', HINT_TYPES.proximity);
       return;
     }
-    const lastGuessNum = Number(input) || NaN;
-    // When no current input, we infer last guess proximity based on feedback history is not tracked; use last numeric input if valid.
-    // If current input invalid, just provide a category based on the most recent valid guess captured via attempts changes.
-    // For simplicity, we'll provide generic guidance when we cannot read a valid last guess.
     let msg = 'Hint: ';
     const thresholdVeryClose = 3;
     const thresholdHot = 6;
     const thresholdWarm = 12;
     let lastGuess = null;
 
-    // Attempt to parse from feedback 'Too high/low' doesn't tell the guess; best effort use last entered input if within range
     const parsed = Number(input);
     if (!Number.isNaN(parsed) && Number.isInteger(parsed) && parsed >= range.min && parsed <= range.max) {
       lastGuess = parsed;
@@ -505,6 +557,13 @@ function App() {
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const playingDisabled = status === 'won' || status === 'timeout' || status === 'out_of_attempts';
+
+  // Badge color classes mapping
+  function badgeClass(result) {
+    if (result === 'correct') return 'ngg-chip guess-correct';
+    if (result === 'too high') return 'ngg-chip guess-high';
+    return 'ngg-chip guess-low';
+  }
 
   return (
     <div className="App" style={{ background: THEME.background, color: THEME.text }}>
@@ -631,7 +690,9 @@ function App() {
                 type="submit"
                 className="ngg-btn"
                 style={{ backgroundColor: THEME.primary }}
-                disabled={playingDisabled}
+                disabled={playingDisabled || (input && isRepeatGuess(Number(input)))}
+                aria-disabled={playingDisabled || (input && isRepeatGuess(Number(input)))}
+                title={input && isRepeatGuess(Number(input)) ? `You already guessed ${Number(input)}` : 'Submit guess'}
               >
                 Guess
               </button>
@@ -648,6 +709,13 @@ function App() {
             >
               {feedback || 'Make a guess to begin!'}
             </p>
+
+            {/* Repeat warning inline, non-disruptive */}
+            {repeatWarning && status === 'playing' && (
+              <p className="ngg-attempts" role="alert" aria-live="polite" style={{ color: THEME.error }}>
+                {repeatWarning}
+              </p>
+            )}
 
             {/* Attempts Counters */}
             <div aria-live="polite" aria-atomic="true">
@@ -669,6 +737,55 @@ function App() {
               Current range: <strong>{range.min}</strong> to <strong>{range.max}</strong> ({DIFFICULTIES[difficulty].label})
             </p>
           </div>
+
+          {/* Guess History */}
+          <section
+            aria-labelledby="guess-history-title"
+            style={{ marginTop: 12 }}
+          >
+            <h3 id="guess-history-title" className="ngg-label" style={{ marginBottom: 8 }}>
+              Guess History
+            </h3>
+            <div className="sr-only" aria-live="polite" aria-atomic="true" ref={historyLiveRef}>
+              {historyLive}
+            </div>
+            <ul
+              role="list"
+              aria-label="List of previous guesses"
+              style={{
+                listStyle: 'none',
+                margin: 0,
+                padding: 0,
+                border: '1px solid var(--border-color, rgba(17,24,39,0.12))',
+                borderRadius: 12,
+                background: 'linear-gradient(180deg, rgba(255,255,255,0.95), rgba(255,255,255,0.9))',
+                maxHeight: '180px',
+                overflow: 'auto'
+              }}
+            >
+              {history.length === 0 ? (
+                <li className="ngg-empty" aria-label="No guesses yet">No guesses yet.</li>
+              ) : (
+                history.map((h) => (
+                  <li
+                    key={h.id}
+                    role="listitem"
+                    aria-label={`Guess ${h.value}, ${h.result}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '8px 12px',
+                      borderBottom: '1px solid rgba(17,24,39,0.08)',
+                    }}
+                  >
+                    <span style={{ fontWeight: 700 }}>#{h.index} — {h.value}</span>
+                    <span className={badgeClass(h.result)}>{h.result}</span>
+                  </li>
+                ))
+              )}
+            </ul>
+          </section>
 
           <div className="ngg-actions">
             {status === 'won' || status === 'timeout' || status === 'out_of_attempts' ? (

@@ -371,6 +371,23 @@
 .diff-easy { background: rgba(16,185,129,0.12); border-color: rgba(16,185,129,0.2); }
 .diff-medium { background: rgba(37,99,235,0.12); border-color: rgba(37,99,235,0.2); }
 .diff-hard { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.2); }
+
+/* Guess history badges */
+.guess-low {
+  background: rgba(37, 99, 235, 0.12);
+  border-color: rgba(37, 99, 235, 0.25);
+  color: var(--ocean-text);
+}
+.guess-high {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.25);
+  color: var(--ocean-text);
+}
+.guess-correct {
+  background: rgba(245, 158, 11, 0.18);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: var(--ocean-text);
+}
 .ngg-date {
   color: rgba(17,24,39,0.6);
   font-size: 12px;
