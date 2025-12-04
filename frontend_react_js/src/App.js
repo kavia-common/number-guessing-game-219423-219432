@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 // Import success sound from src so CRA bundles and serves the correct URL
 import successChimeUrl from './assets/success-chime.mp3';
+import LeaderboardModal from './LeaderboardModal';
+import { addResult } from './leaderboard';
 
 /**
  * Number Guessing Game - Ocean Professional themed
@@ -84,6 +86,9 @@ function App() {
   const [status, setStatus] = useState('playing');
   const [attempts, setAttempts] = useState(0);
   const [score, setScore] = useState(0); // track score based on attempts and difficulty
+
+  // Leaderboard modal visibility
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
 
   // Hint state: count of hints used, and last hint text
   const [hintCount, setHintCount] = useState(0);
@@ -323,6 +328,18 @@ function App() {
       const finalScore = Math.max(0, baseScore - penalty);
       setScore(finalScore);
 
+      // Persist leaderboard entry immediately on win
+      try {
+        addResult({
+          timestamp: Date.now(),
+          difficulty,
+          attempts: nextAttempts,
+          score: finalScore,
+        });
+      } catch {
+        // ignore storage errors
+      }
+
       // Trigger success sound and micro-animation (user gesture event)
       await playSuccessSound();
 
@@ -394,13 +411,22 @@ function App() {
               Guess the secret number between {range.min} and {range.max}
             </p>
           </div>
-          <button
-            className="theme-toggle"
-            onClick={toggleTheme}
-            aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
-          >
-            {theme === 'light' ? '🌙 Dark' : '☀️ Light'}
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              className="theme-toggle"
+              onClick={toggleTheme}
+              aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+            >
+              {theme === 'light' ? '🌙 Dark' : '☀️ Light'}
+            </button>
+            <button
+              className="theme-toggle"
+              onClick={() => setLeaderboardOpen(true)}
+              aria-label="Open leaderboard"
+            >
+              🏆 Leaderboard
+            </button>
+          </div>
         </div>
       </header>
 
@@ -559,6 +585,8 @@ function App() {
           </p>
         </footer>
       </main>
+
+      <LeaderboardModal open={leaderboardOpen} onClose={() => setLeaderboardOpen(false)} />
     </div>
   );
 }
