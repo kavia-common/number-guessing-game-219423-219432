@@ -1,6 +1,16 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import App from './App';
 
+// Ensure navigator.vibrate is present to avoid environment-specific failures
+beforeAll(() => {
+  if (typeof navigator.vibrate !== 'function') {
+    Object.defineProperty(window.navigator, 'vibrate', {
+      value: jest.fn(),
+      configurable: true,
+    });
+  }
+});
+
 // PUBLIC_INTERFACE
 test('game renders, supports difficulty changes, guessing, reset, scoring, hint, and shows Timer Mode toggle', () => {
   render(<App />);

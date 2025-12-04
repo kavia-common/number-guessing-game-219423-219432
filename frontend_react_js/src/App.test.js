@@ -1,6 +1,31 @@
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import App from './App';
 
+// Mock Audio and vibrate APIs to prevent flakiness and allow call assertions
+class MockAudioElement {
+  constructor() {
+    this.volume = 1;
+    this.muted = false;
+    this.src = '';
+    this.play = jest.fn().mockResolvedValue();
+    this.pause = jest.fn();
+    this.addEventListener = jest.fn();
+    this.removeEventListener = jest.fn();
+    this.load = jest.fn();
+  }
+}
+beforeAll(() => {
+  // Mock creation/usage path via <audio ref> element; JSDOM creates HTMLAudioElement
+  Object.defineProperty(window, 'HTMLMediaElement', {
+    value: class {},
+  });
+  // navigator.vibrate mock
+  Object.defineProperty(window.navigator, 'vibrate', {
+    value: jest.fn(),
+    configurable: true,
+  });
+});
+
 // Helper to brute-force and return score text after win
 const bruteForceWinAndGetScoreText = (rangeMax = 20) => {
   const input = screen.getByLabelText(/Enter your guess/i);

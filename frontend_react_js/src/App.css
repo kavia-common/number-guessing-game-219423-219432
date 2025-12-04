@@ -219,6 +219,25 @@
   gap: 6px;
 }
 
+/* Success micro-animation */
+.ngg-bounce {
+  animation: ngg-bounce-scale 500ms ease-out both;
+}
+
+@keyframes ngg-bounce-scale {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.06); }
+  60% { transform: scale(0.98); }
+  100% { transform: scale(1); }
+}
+
+/* Respect reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .ngg-bounce {
+    animation: none;
+  }
+}
+
 .ngg-feedback {
   margin: 0;
   padding: 12px 14px;

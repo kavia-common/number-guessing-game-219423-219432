@@ -38,6 +38,10 @@ const TIMER_DEFAULTS = {
   hard: 60,
 };
 
+// PUBLIC_INTERFACE
+// Volume constant for success sound (0.0 - 1.0)
+const SUCCESS_SOUND_VOLUME = 0.6;
+
 /** PUBLIC_INTERFACE
  * Format seconds to mm:ss (or s for under a minute if desired)
  */
@@ -89,17 +93,20 @@ function App() {
   const timerRef = useRef(null);
   const lastAnnouncedRef = useRef(null); // to avoid SR spam
 
-  /** Refs for accessibility */
+  /** Refs for accessibility and UX */
   const inputRef = useRef(null);
   const feedbackRef = useRef(null);
   const playAgainRef = useRef(null);
+
+  // Audio: preload success sound element
+  const successAudioRef = useRef(null);
 
   // Apply theme token to document for CSS var selection (light/dark switch retained)
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
-  /** Derived info */
+  // Derived info
   const placeholder = useMemo(
     () => `Enter a number (${range.min}-${range.max})`,
     [range]
@@ -138,6 +145,44 @@ function App() {
   }
 
   // PUBLIC_INTERFACE
+  // Safely play success sound on user gesture (form submit) if allowed and not reduced-motion-muted by user
+  async function playSuccessSound() {
+    try {
+      const el = successAudioRef.current;
+      if (!el) return;
+      // Respect a simple "muted" or reduced motion preference to avoid disruptive feedback
+      const prefersReducedMotion =
+        window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      // If the audio element is muted by user or reduced motion is enabled, we still allow mild sound unless page-muted.
+      // To respect potential muted preference, check a data attribute if we later expose a mute toggle (not present now).
+      if (el.muted) return;
+
+      // Set volume once before play
+      el.volume = SUCCESS_SOUND_VOLUME;
+      // Attempt play; autoplay policy is satisfied because this is invoked from a user event
+      const p = el.play();
+      if (p && typeof p.then === 'function') {
+        await p.catch(() => {});
+      }
+    } catch {
+      // no-op: never block UI
+    }
+  }
+
+  // PUBLIC_INTERFACE
+  // Trigger a gentle vibration if supported on user interaction
+  function vibrateOnWrongGuess() {
+    try {
+      if (navigator && typeof navigator.vibrate === 'function') {
+        navigator.vibrate(80);
+      }
+    } catch {
+      // no-op
+    }
+  }
+
+  // PUBLIC_INTERFACE
   // Reset timer based on current difficulty and (re)start when timerMode is enabled
   function resetAndMaybeStartTimer(nextDifficulty = difficulty) {
     const duration = TIMER_DEFAULTS[nextDifficulty];
@@ -149,7 +194,7 @@ function App() {
         setTimeLeft((prev) => {
           const next = prev - 1;
           if (next <= 0) {
-            // Timeout reached -> loss state
+            // Timeout reached -> loss state (no success sound here)
             clearTimer();
             setStatus('timeout');
             setFeedback("Time's up! Round over.");
@@ -186,10 +231,7 @@ function App() {
       // if we returned to playing (e.g., after reset), ensure timer is running
       resetAndMaybeStartTimer(difficulty);
     }
-    // Cleanup on unmount
-    return () => {
-      // no-op here; dedicated clear in status change is enough
-    };
+    return () => {};
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
@@ -256,7 +298,7 @@ function App() {
     return { ok: true, value: num };
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     if (status === 'won' || status === 'timeout') return;
 
@@ -278,6 +320,10 @@ function App() {
       const penalty = Math.min(baseScore, hintCount * HINT_PENALTY);
       const finalScore = Math.max(0, baseScore - penalty);
       setScore(finalScore);
+
+      // Trigger success sound and micro-animation (user gesture event)
+      await playSuccessSound();
+
       setFeedback(`Correct! The number was ${secret}. Your score: ${finalScore}.`);
       setStatus('won');
       // after announcing correctness, focus play again
@@ -285,9 +331,13 @@ function App() {
       clearTimer();
     } else if (guess < secret) {
       setFeedback('Too low. Try a higher number.');
+      // Gentle vibration on incorrect guess (user interaction)
+      vibrateOnWrongGuess();
       setTimeout(() => feedbackRef.current?.focus(), 0);
     } else {
       setFeedback('Too high. Try a lower number.');
+      // Gentle vibration on incorrect guess (user interaction)
+      vibrateOnWrongGuess();
       setTimeout(() => feedbackRef.current?.focus(), 0);
     }
   }
@@ -312,8 +362,22 @@ function App() {
     }
   }
 
+  const prefersReducedMotion =
+    typeof window !== 'undefined' &&
+    window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
   return (
     <div className="App" style={{ background: THEME.background, color: THEME.text }}>
+      {/* Hidden/preloaded audio element; will only play on user gesture via handleSubmit */}
+      <audio
+        ref={successAudioRef}
+        src={process.env.PUBLIC_URL ? `${process.env.PUBLIC_URL}/assets/success-chime.mp3` : 'assets/success-chime.mp3'}
+        preload="auto"
+        aria-hidden="true"
+        style={{ display: 'none' }}
+      />
+
       <header className="ngg-header">
         <div className="ngg-header-inner">
           <div className="ngg-title-wrap">
@@ -426,7 +490,7 @@ function App() {
               id="feedback"
               tabIndex={-1}
               ref={feedbackRef}
-              className={`ngg-feedback ${status === 'won' ? 'won' : feedback ? 'hint' : ''}`}
+              className={`ngg-feedback ${status === 'won' ? 'won' : feedback ? 'hint' : ''} ${status === 'won' && !prefersReducedMotion ? 'ngg-bounce' : ''}`}
               aria-live="polite"
             >
               {feedback || 'Make a guess to begin!'}
