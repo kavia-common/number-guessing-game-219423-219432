@@ -26,6 +26,10 @@ const DIFFICULTIES = {
   hard: { label: 'Hard', min: 1, max: 100 },
 };
 
+// PUBLIC_INTERFACE
+// Fixed penalty per hint usage applied to final score on win
+const HINT_PENALTY = 100;
+
 /** PUBLIC_INTERFACE
  * Main application component for the Number Guessing Game.
  * Manages theme, game state, and renders the UI.
@@ -55,6 +59,10 @@ function App() {
   const [attempts, setAttempts] = useState(0);
   const [status, setStatus] = useState('playing'); // 'playing' | 'won'
   const [score, setScore] = useState(0); // track score based on attempts and difficulty
+
+  // Hint state: count of hints used, and last hint text
+  const [hintCount, setHintCount] = useState(0);
+  const [lastHint, setLastHint] = useState('');
 
   /** Refs for accessibility */
   const inputRef = useRef(null);
@@ -105,6 +113,9 @@ function App() {
     setAttempts(0);
     setStatus('playing');
     setScore(0);
+    // Reset hints
+    setHintCount(0);
+    setLastHint('');
     // After reset, move focus back to input for keyboard flow
     setTimeout(() => inputRef.current?.focus(), 0);
   }
@@ -123,6 +134,9 @@ function App() {
     setAttempts(0);
     setStatus('playing');
     setScore(0);
+    // Reset hints on difficulty change
+    setHintCount(0);
+    setLastHint('');
     // keep focus accessible to selector change; move focus to input for play flow
     setTimeout(() => inputRef.current?.focus(), 0);
   }
@@ -156,7 +170,9 @@ function App() {
     setAttempts(nextAttempts);
 
     if (guess === secret) {
-      const finalScore = computeScore(nextAttempts, range.max);
+      const baseScore = computeScore(nextAttempts, range.max);
+      const penalty = Math.min(baseScore, hintCount * HINT_PENALTY);
+      const finalScore = Math.max(0, baseScore - penalty);
       setScore(finalScore);
       setFeedback(`Correct! The number was ${secret}. Your score: ${finalScore}.`);
       setStatus('won');
@@ -169,6 +185,19 @@ function App() {
       setFeedback('Too high. Try a lower number.');
       setTimeout(() => feedbackRef.current?.focus(), 0);
     }
+  }
+
+  // PUBLIC_INTERFACE
+  function handleGetHint() {
+    if (status === 'won') return;
+    // Provide an even/odd hint only, without revealing the number
+    const parity = secret % 2 === 0 ? 'even' : 'odd';
+    const hintText = `Hint: The number is ${parity}.`;
+    setLastHint(hintText);
+    setHintCount((c) => c + 1);
+    setFeedback(hintText);
+    // Focus feedback for SR users
+    setTimeout(() => feedbackRef.current?.focus(), 0);
   }
 
   function onKeyDown(e) {
@@ -281,23 +310,37 @@ function App() {
 
           <div className="ngg-actions">
             {status === 'won' ? (
-              <button
-                ref={playAgainRef}
-                className="ngg-btn-secondary"
-                onClick={resetGame}
-                style={{ borderColor: THEME.secondary, color: THEME.secondary }}
-              >
-                Play Again
-              </button>
+              <>
+                <button
+                  ref={playAgainRef}
+                  className="ngg-btn-secondary"
+                  onClick={resetGame}
+                  style={{ borderColor: THEME.secondary, color: THEME.secondary }}
+                >
+                  Play Again
+                </button>
+              </>
             ) : (
-              <button
-                className="ngg-btn-secondary"
-                onClick={resetGame}
-                type="button"
-                style={{ borderColor: THEME.secondary, color: THEME.secondary }}
-              >
-                Reset
-              </button>
+              <>
+                <button
+                  className="ngg-btn-secondary"
+                  onClick={resetGame}
+                  type="button"
+                  style={{ borderColor: THEME.secondary, color: THEME.secondary, marginRight: 8 }}
+                >
+                  Reset
+                </button>
+                <button
+                  className="ngg-btn-secondary"
+                  onClick={handleGetHint}
+                  type="button"
+                  aria-label="Get a hint about the secret number"
+                  disabled={status === 'won'}
+                  style={{ borderColor: THEME.secondary, color: THEME.secondary }}
+                >
+                  Get Hint
+                </button>
+              </>
             )}
           </div>
         </section>
