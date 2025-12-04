@@ -30,6 +30,24 @@ const DIFFICULTIES = {
 // Fixed penalty per hint usage applied to final score on win
 const HINT_PENALTY = 100;
 
+// PUBLIC_INTERFACE
+// Default timer durations by difficulty (in seconds)
+const TIMER_DEFAULTS = {
+  easy: 30,
+  medium: 45,
+  hard: 60,
+};
+
+/** PUBLIC_INTERFACE
+ * Format seconds to mm:ss (or s for under a minute if desired)
+ */
+function formatSeconds(total) {
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  if (m <= 0) return `${s}s`;
+  return `${String(m)}:${String(s).padStart(2, '0')}`;
+}
+
 /** PUBLIC_INTERFACE
  * Main application component for the Number Guessing Game.
  * Manages theme, game state, and renders the UI.
@@ -56,13 +74,20 @@ function App() {
   });
   const [input, setInput] = useState('');
   const [feedback, setFeedback] = useState('');
+  // status: 'playing' | 'won' | 'timeout'
+  const [status, setStatus] = useState('playing');
   const [attempts, setAttempts] = useState(0);
-  const [status, setStatus] = useState('playing'); // 'playing' | 'won'
   const [score, setScore] = useState(0); // track score based on attempts and difficulty
 
   // Hint state: count of hints used, and last hint text
   const [hintCount, setHintCount] = useState(0);
   const [lastHint, setLastHint] = useState('');
+
+  // Timer Mode
+  const [timerMode, setTimerMode] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(TIMER_DEFAULTS[difficulty]);
+  const timerRef = useRef(null);
+  const lastAnnouncedRef = useRef(null); // to avoid SR spam
 
   /** Refs for accessibility */
   const inputRef = useRef(null);
@@ -104,6 +129,81 @@ function App() {
     return Math.max(0, raw);
   }
 
+  // Internal: Clear and stop timer
+  function clearTimer() {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }
+
+  // PUBLIC_INTERFACE
+  // Reset timer based on current difficulty and (re)start when timerMode is enabled
+  function resetAndMaybeStartTimer(nextDifficulty = difficulty) {
+    const duration = TIMER_DEFAULTS[nextDifficulty];
+    setTimeLeft(duration);
+    clearTimer();
+    if (timerMode && status === 'playing') {
+      // Start ticking every 1s
+      timerRef.current = setInterval(() => {
+        setTimeLeft((prev) => {
+          const next = prev - 1;
+          if (next <= 0) {
+            // Timeout reached -> loss state
+            clearTimer();
+            setStatus('timeout');
+            setFeedback("Time's up! Round over.");
+            // Disable input via status; focus Play Again if visible soon
+            setTimeout(() => playAgainRef.current?.focus(), 0);
+            return 0;
+          }
+          return next;
+        });
+      }, 1000);
+    }
+  }
+
+  // Start/stop timer on mode toggle
+  useEffect(() => {
+    if (timerMode) {
+      // restarting timer for current difficulty when enabling
+      resetAndMaybeStartTimer(difficulty);
+    } else {
+      clearTimer();
+    }
+    // Cleanup on unmount
+    return () => {
+      clearTimer();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timerMode]);
+
+  // Stop timer when status changes out of 'playing' (e.g., win or timeout)
+  useEffect(() => {
+    if (status !== 'playing') {
+      clearTimer();
+    } else if (timerMode) {
+      // if we returned to playing (e.g., after reset), ensure timer is running
+      resetAndMaybeStartTimer(difficulty);
+    }
+    // Cleanup on unmount
+    return () => {
+      // no-op here; dedicated clear in status change is enough
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
+
+  // Update countdown announcement without spamming: announce at start and each 5s, and every second under 10s
+  const timerAriaText = useMemo(() => {
+    if (!timerMode || status !== 'playing') return '';
+    const announce = timeLeft <= 10 || timeLeft % 5 === 0 || timeLeft === TIMER_DEFAULTS[difficulty];
+    if (announce && lastAnnouncedRef.current !== timeLeft) {
+      lastAnnouncedRef.current = timeLeft;
+      return `Time remaining: ${formatSeconds(timeLeft)}.`;
+    }
+    return ''; // avoid repeated SR announcements
+  }, [timeLeft, timerMode, status, difficulty]);
+
   // PUBLIC_INTERFACE
   function resetGame() {
     // re-generate secret using the current range
@@ -116,6 +216,8 @@ function App() {
     // Reset hints
     setHintCount(0);
     setLastHint('');
+    // Reset timer for current difficulty
+    resetAndMaybeStartTimer(difficulty);
     // After reset, move focus back to input for keyboard flow
     setTimeout(() => inputRef.current?.focus(), 0);
   }
@@ -137,6 +239,8 @@ function App() {
     // Reset hints on difficulty change
     setHintCount(0);
     setLastHint('');
+    // Reset timer for new difficulty
+    resetAndMaybeStartTimer(next);
     // keep focus accessible to selector change; move focus to input for play flow
     setTimeout(() => inputRef.current?.focus(), 0);
   }
@@ -154,7 +258,7 @@ function App() {
 
   function handleSubmit(e) {
     e.preventDefault();
-    if (status === 'won') return;
+    if (status === 'won' || status === 'timeout') return;
 
     const validation = validateInput(input);
     if (!validation.ok) {
@@ -178,6 +282,7 @@ function App() {
       setStatus('won');
       // after announcing correctness, focus play again
       setTimeout(() => playAgainRef.current?.focus(), 0);
+      clearTimer();
     } else if (guess < secret) {
       setFeedback('Too low. Try a higher number.');
       setTimeout(() => feedbackRef.current?.focus(), 0);
@@ -189,7 +294,7 @@ function App() {
 
   // PUBLIC_INTERFACE
   function handleGetHint() {
-    if (status === 'won') return;
+    if (status === 'won' || status === 'timeout') return;
     // Provide an even/odd hint only, without revealing the number
     const parity = secret % 2 === 0 ? 'even' : 'odd';
     const hintText = `Hint: The number is ${parity}.`;
@@ -232,7 +337,7 @@ function App() {
           <div className="ngg-card-gradient" aria-hidden="true" />
           <h2 id="game-section-title" className="sr-only">Game controls</h2>
 
-          {/* Difficulty selector */}
+          {/* Difficulty selector and Timer Mode toggle */}
           <div className="ngg-form" role="group" aria-labelledby="difficulty-label">
             <label id="difficulty-label" htmlFor="difficulty" className="ngg-label">
               Select difficulty
@@ -249,6 +354,37 @@ function App() {
                 <option value="medium">Medium (1-50)</option>
                 <option value="hard">Hard (1-100)</option>
               </select>
+            </div>
+
+            <div className="ngg-input-row" style={{ gridTemplateColumns: 'auto 1fr' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  id="timerMode"
+                  type="checkbox"
+                  checked={timerMode}
+                  onChange={(e) => setTimerMode(e.target.checked)}
+                  aria-label="Enable Timer Mode"
+                />
+                <label htmlFor="timerMode" className="ngg-label" style={{ margin: 0 }}>
+                  Enable Timer Mode
+                </label>
+              </div>
+              {timerMode && status === 'playing' && (
+                <div
+                  aria-live="polite"
+                  aria-atomic="true"
+                  className="ngg-attempts"
+                  style={{ textAlign: 'right' }}
+                >
+                  <span aria-hidden="true">⏱ {formatSeconds(timeLeft)}</span>
+                  <span className="sr-only">{timerAriaText}</span>
+                </div>
+              )}
+              {timerMode && status === 'timeout' && (
+                <div aria-live="polite" className="ngg-attempts" style={{ textAlign: 'right', color: THEME.error }}>
+                  ⏱ Time’s up!
+                </div>
+              )}
             </div>
           </div>
 
@@ -270,15 +406,15 @@ function App() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={onKeyDown}
-                disabled={status === 'won'}
+                disabled={status === 'won' || status === 'timeout'}
                 aria-describedby="feedback attempts score"
-                aria-invalid={feedback && status !== 'won' ? 'true' : 'false'}
+                aria-invalid={feedback && status === 'playing' ? 'true' : 'false'}
               />
               <button
                 type="submit"
                 className="ngg-btn"
                 style={{ backgroundColor: THEME.primary }}
-                disabled={status === 'won'}
+                disabled={status === 'won' || status === 'timeout'}
               >
                 Guess
               </button>
@@ -309,7 +445,7 @@ function App() {
           </div>
 
           <div className="ngg-actions">
-            {status === 'won' ? (
+            {status === 'won' || status === 'timeout' ? (
               <>
                 <button
                   ref={playAgainRef}
@@ -317,7 +453,7 @@ function App() {
                   onClick={resetGame}
                   style={{ borderColor: THEME.secondary, color: THEME.secondary }}
                 >
-                  Play Again
+                  {status === 'won' ? 'Play Again' : 'New Game'}
                 </button>
               </>
             ) : (
@@ -335,7 +471,7 @@ function App() {
                   onClick={handleGetHint}
                   type="button"
                   aria-label="Get a hint about the secret number"
-                  disabled={status === 'won'}
+                  disabled={status === 'won' || status === 'timeout'}
                   style={{ borderColor: THEME.secondary, color: THEME.secondary }}
                 >
                   Get Hint

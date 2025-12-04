@@ -2,7 +2,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import App from './App';
 
 // PUBLIC_INTERFACE
-test('game renders, supports difficulty changes, guessing, reset, scoring, and hint behavior', () => {
+test('game renders, supports difficulty changes, guessing, reset, scoring, hint, and shows Timer Mode toggle', () => {
   render(<App />);
 
   // UI elements present
@@ -14,6 +14,9 @@ test('game renders, supports difficulty changes, guessing, reset, scoring, and h
   expect(guessBtn).toBeInTheDocument();
   expect(hintBtn).toBeInTheDocument();
   expect(hintBtn).toBeEnabled();
+
+  // Timer Mode toggle presence
+  expect(screen.getByLabelText(/Enable Timer Mode/i)).toBeInTheDocument();
 
   // Default difficulty is Medium (1-50)
   expect(screen.getByText(/between 1 and 50/i)).toBeInTheDocument();
