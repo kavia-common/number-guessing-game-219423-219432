@@ -46,6 +46,14 @@ const TIMER_DEFAULTS = {
 // Volume constant for success sound (0.0 - 1.0)
 const SUCCESS_SOUND_VOLUME = 0.6;
 
+// PUBLIC_INTERFACE
+// Maximum allowed attempts per difficulty
+const MAX_ATTEMPTS = {
+  easy: 6,
+  medium: 8,
+  hard: 10,
+};
+
 /** PUBLIC_INTERFACE
  * Format seconds to mm:ss (or s for under a minute if desired)
  */
@@ -82,7 +90,7 @@ function App() {
   });
   const [input, setInput] = useState('');
   const [feedback, setFeedback] = useState('');
-  // status: 'playing' | 'won' | 'timeout'
+  // status: 'playing' | 'won' | 'timeout' | 'out_of_attempts'
   const [status, setStatus] = useState('playing');
   const [attempts, setAttempts] = useState(0);
   const [score, setScore] = useState(0); // track score based on attempts and difficulty
@@ -94,6 +102,11 @@ function App() {
   const [hintCount, setHintCount] = useState(0);
   const [lastHint, setLastHint] = useState('');
 
+  // Attempts remaining derived from difficulty and attempts used
+  const maxAttempts = MAX_ATTEMPTS[difficulty];
+  const attemptsRemaining = Math.max(0, maxAttempts - attempts);
+  const attemptsLiveText = `Attempts remaining: ${attemptsRemaining}.`;
+
   // Timer Mode
   const [timerMode, setTimerMode] = useState(false);
   const [timeLeft, setTimeLeft] = useState(TIMER_DEFAULTS[difficulty]);
@@ -104,6 +117,7 @@ function App() {
   const inputRef = useRef(null);
   const feedbackRef = useRef(null);
   const playAgainRef = useRef(null);
+  const attemptsLiveRef = useRef(null);
 
   // Audio: preload success sound element
   const successAudioRef = useRef(null);
@@ -161,13 +175,10 @@ function App() {
       const prefersReducedMotion =
         window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-      // If the audio element is muted by user or reduced motion is enabled, we still allow mild sound unless page-muted.
-      // To respect potential muted preference, check a data attribute if we later expose a mute toggle (not present now).
       if (el.muted) return;
 
       // Set volume once before play
       el.volume = SUCCESS_SOUND_VOLUME;
-      // Attempt play; autoplay policy is satisfied because this is invoked from a user event
       const p = el.play();
       if (p && typeof p.then === 'function') {
         await p.catch(() => {});
@@ -205,7 +216,6 @@ function App() {
             clearTimer();
             setStatus('timeout');
             setFeedback("Time's up! Round over.");
-            // Disable input via status; focus Play Again if visible soon
             setTimeout(() => playAgainRef.current?.focus(), 0);
             return 0;
           }
@@ -218,31 +228,28 @@ function App() {
   // Start/stop timer on mode toggle
   useEffect(() => {
     if (timerMode) {
-      // restarting timer for current difficulty when enabling
       resetAndMaybeStartTimer(difficulty);
     } else {
       clearTimer();
     }
-    // Cleanup on unmount
     return () => {
       clearTimer();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timerMode]);
 
-  // Stop timer when status changes out of 'playing' (e.g., win or timeout)
+  // Stop timer when status changes out of 'playing' (e.g., win or timeout or out_of_attempts)
   useEffect(() => {
     if (status !== 'playing') {
       clearTimer();
     } else if (timerMode) {
-      // if we returned to playing (e.g., after reset), ensure timer is running
       resetAndMaybeStartTimer(difficulty);
     }
     return () => {};
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
-  // Update countdown announcement without spamming: announce at start and each 5s, and every second under 10s
+  // Update countdown announcement without spamming
   const timerAriaText = useMemo(() => {
     if (!timerMode || status !== 'playing') return '';
     const announce = timeLeft <= 10 || timeLeft % 5 === 0 || timeLeft === TIMER_DEFAULTS[difficulty];
@@ -250,24 +257,20 @@ function App() {
       lastAnnouncedRef.current = timeLeft;
       return `Time remaining: ${formatSeconds(timeLeft)}.`;
     }
-    return ''; // avoid repeated SR announcements
+    return '';
   }, [timeLeft, timerMode, status, difficulty]);
 
   // PUBLIC_INTERFACE
   function resetGame() {
-    // re-generate secret using the current range
     setSecret(generateSecret(range.min, range.max));
     setInput('');
     setFeedback('');
     setAttempts(0);
     setStatus('playing');
     setScore(0);
-    // Reset hints
     setHintCount(0);
     setLastHint('');
-    // Reset timer for current difficulty
     resetAndMaybeStartTimer(difficulty);
-    // After reset, move focus back to input for keyboard flow
     setTimeout(() => inputRef.current?.focus(), 0);
   }
 
@@ -276,21 +279,16 @@ function App() {
     const next = e.target.value;
     setDifficulty(next);
     const preset = DIFFICULTIES[next];
-    // Update range first so UI reflects immediately
     setRange({ min: preset.min, max: preset.max });
-    // Regenerate secret and reset counters and feedback
     setSecret(generateSecret(preset.min, preset.max));
     setInput('');
     setFeedback('');
     setAttempts(0);
     setStatus('playing');
     setScore(0);
-    // Reset hints on difficulty change
     setHintCount(0);
     setLastHint('');
-    // Reset timer for new difficulty
     resetAndMaybeStartTimer(next);
-    // keep focus accessible to selector change; move focus to input for play flow
     setTimeout(() => inputRef.current?.focus(), 0);
   }
 
@@ -307,18 +305,16 @@ function App() {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (status === 'won' || status === 'timeout') return;
+    if (status === 'won' || status === 'timeout' || status === 'out_of_attempts') return;
 
     const validation = validateInput(input);
     if (!validation.ok) {
       setFeedback(validation.message);
-      // move focus to feedback for screen readers
       setTimeout(() => feedbackRef.current?.focus(), 0);
       return;
     }
 
     const guess = validation.value;
-    // compute the next attempts synchronously for score calc
     const nextAttempts = attempts + 1;
     setAttempts(nextAttempts);
 
@@ -328,7 +324,6 @@ function App() {
       const finalScore = Math.max(0, baseScore - penalty);
       setScore(finalScore);
 
-      // Persist leaderboard entry immediately on win
       try {
         addResult({
           timestamp: Date.now(),
@@ -340,43 +335,47 @@ function App() {
         // ignore storage errors
       }
 
-      // Trigger success sound and micro-animation (user gesture event)
       await playSuccessSound();
 
       setFeedback(`Correct! The number was ${secret}. Your score: ${finalScore}.`);
       setStatus('won');
-      // after announcing correctness, focus play again
       setTimeout(() => playAgainRef.current?.focus(), 0);
       clearTimer();
-    } else if (guess < secret) {
+      return;
+    }
+
+    // Incorrect guess path
+    if (guess < secret) {
       setFeedback('Too low. Try a higher number.');
-      // Gentle vibration on incorrect guess (user interaction)
-      vibrateOnWrongGuess();
-      setTimeout(() => feedbackRef.current?.focus(), 0);
     } else {
       setFeedback('Too high. Try a lower number.');
-      // Gentle vibration on incorrect guess (user interaction)
-      vibrateOnWrongGuess();
-      setTimeout(() => feedbackRef.current?.focus(), 0);
+    }
+    vibrateOnWrongGuess();
+    setTimeout(() => feedbackRef.current?.focus(), 0);
+
+    // After processing wrong guess, check attempts remaining and end round if zero
+    const remaining = maxAttempts - nextAttempts;
+    if (remaining <= 0) {
+      setStatus('out_of_attempts');
+      setFeedback('Out of attempts! Round over.');
+      setTimeout(() => playAgainRef.current?.focus(), 0);
+      clearTimer();
     }
   }
 
   // PUBLIC_INTERFACE
   function handleGetHint() {
-    if (status === 'won' || status === 'timeout') return;
-    // Provide an even/odd hint only, without revealing the number
+    if (status === 'won' || status === 'timeout' || status === 'out_of_attempts') return;
     const parity = secret % 2 === 0 ? 'even' : 'odd';
     const hintText = `Hint: The number is ${parity}.`;
     setLastHint(hintText);
     setHintCount((c) => c + 1);
     setFeedback(hintText);
-    // Focus feedback for SR users
     setTimeout(() => feedbackRef.current?.focus(), 0);
   }
 
   function onKeyDown(e) {
     if (e.key === 'Enter') {
-      // form submit handles it
       return;
     }
   }
@@ -396,7 +395,6 @@ function App() {
         aria-hidden="true"
         style={{ display: 'none' }}
         onCanPlay={() => {
-          // ensure volume is initialized when media is ready
           if (successAudioRef.current) {
             successAudioRef.current.volume = SUCCESS_SOUND_VOLUME;
           }
@@ -504,7 +502,7 @@ function App() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={onKeyDown}
-                disabled={status === 'won' || status === 'timeout'}
+                disabled={status === 'won' || status === 'timeout' || status === 'out_of_attempts'}
                 aria-describedby="feedback attempts score"
                 aria-invalid={feedback && status === 'playing' ? 'true' : 'false'}
               />
@@ -512,7 +510,7 @@ function App() {
                 type="submit"
                 className="ngg-btn"
                 style={{ backgroundColor: THEME.primary }}
-                disabled={status === 'won' || status === 'timeout'}
+                disabled={status === 'won' || status === 'timeout' || status === 'out_of_attempts'}
               >
                 Guess
               </button>
@@ -529,9 +527,18 @@ function App() {
             >
               {feedback || 'Make a guess to begin!'}
             </p>
-            <p id="attempts" className="ngg-attempts">
-              Attempts: <strong>{attempts}</strong>
-            </p>
+
+            {/* Attempts Counters */}
+            <div aria-live="polite" aria-atomic="true">
+              <p id="attempts" className="ngg-attempts">
+                Attempts used: <strong>{attempts}</strong>
+              </p>
+              <p className="ngg-attempts">
+                Attempts remaining: <strong aria-live="polite" ref={attemptsLiveRef}>{attemptsRemaining}</strong>
+                <span className="sr-only">{attemptsLiveText}</span>
+              </p>
+            </div>
+
             {status === 'won' && (
               <p id="score" className="ngg-attempts" aria-live="polite">
                 Score: <strong>{score}</strong>
@@ -543,7 +550,7 @@ function App() {
           </div>
 
           <div className="ngg-actions">
-            {status === 'won' || status === 'timeout' ? (
+            {status === 'won' || status === 'timeout' || status === 'out_of_attempts' ? (
               <>
                 <button
                   ref={playAgainRef}
@@ -569,7 +576,7 @@ function App() {
                   onClick={handleGetHint}
                   type="button"
                   aria-label="Get a hint about the secret number"
-                  disabled={status === 'won' || status === 'timeout'}
+                  disabled={status === 'won' || status === 'timeout' || status === 'out_of_attempts'}
                   style={{ borderColor: THEME.secondary, color: THEME.secondary }}
                 >
                   Get Hint
