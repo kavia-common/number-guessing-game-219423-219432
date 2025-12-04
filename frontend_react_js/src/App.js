@@ -19,16 +19,25 @@ const THEME = {
   text: '#111827',
 };
 
-// PUBLIC_INTERFACE
+/** PUBLIC_INTERFACE
+ * Main application component for the Number Guessing Game.
+ * Manages theme, game state, and renders the UI.
+ */
 function App() {
-  /** State */
+  /** State
+   * Place 'range' before any usage in initializers to avoid TDZ issues.
+   */
   const [theme, setTheme] = useState('light'); // kept to respect existing template behavior
-  const [secret, setSecret] = useState(() => generateSecret());
+  const [range, setRange] = useState({ min: 1, max: 100 });
+  const [secret, setSecret] = useState(() => {
+    // initialize secret using explicit min/max to avoid referencing 'range' before it's initialized
+    const { min, max } = { min: 1, max: 100 };
+    return generateSecret(min, max);
+  });
   const [input, setInput] = useState('');
   const [feedback, setFeedback] = useState('');
   const [attempts, setAttempts] = useState(0);
   const [status, setStatus] = useState('playing'); // 'playing' | 'won'
-  const [range, setRange] = useState({ min: 1, max: 100 });
 
   /** Refs for accessibility */
   const inputRef = useRef(null);
@@ -52,13 +61,15 @@ function App() {
   };
 
   /** Logic */
-  function generateSecret(min = range.min, max = range.max) {
+  // Make generateSecret independent from component closure by always requiring min/max
+  function generateSecret(min, max) {
     const value = Math.floor(Math.random() * (max - min + 1)) + min;
     return value;
   }
 
   function resetGame() {
-    setSecret(generateSecret());
+    // re-generate secret using the current range
+    setSecret(generateSecret(range.min, range.max));
     setInput('');
     setFeedback('');
     setAttempts(0);
