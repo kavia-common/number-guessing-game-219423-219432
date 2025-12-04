@@ -372,7 +372,7 @@ function App() {
       {/* Hidden/preloaded audio element; will only play on user gesture via handleSubmit */}
       <audio
         ref={successAudioRef}
-        src={process.env.PUBLIC_URL ? `${process.env.PUBLIC_URL}/assets/success-chime.mp3` : 'assets/success-chime.mp3'}
+        src="/assets/success-chime.mp3"
         preload="auto"
         aria-hidden="true"
         style={{ display: 'none' }}
