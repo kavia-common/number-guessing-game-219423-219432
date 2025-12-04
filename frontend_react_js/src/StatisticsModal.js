@@ -123,7 +123,7 @@ export default function StatisticsModal({ open, onClose }) {
             gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
           }}
         >
-          {cards.map((c) => (
+          {cards.filter(Boolean).map((c) => (
             <div
               key={c.key}
               className="stats-card"

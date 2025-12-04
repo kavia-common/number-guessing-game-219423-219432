@@ -115,6 +115,7 @@ const resources = {
       stats_average_attempts: 'Average Attempts (wins)',
       stats_not_available: 'N/A',
       statistics_hint: 'Totals include completed rounds (wins, losses, timeouts). Fastest Win is based on Timer Challenge metadata when available.',
+      stats_puzzles_solved: 'Puzzles Solved',
       // Achievements
       achievements_title: 'Achievements',
       achievements_close: 'Close',
@@ -138,7 +139,29 @@ const resources = {
       language_en: 'English',
       language_te: 'తెలుగు',
       language_hi: 'हिन्दी',
-      themeLabel: 'Theme'
+      themeLabel: 'Theme',
+      // Puzzle Mode
+      puzzle_mode_enable_label: 'Enable Puzzle Mode',
+      puzzle_mode_title: 'Solve a puzzle to earn a clue',
+      puzzle_options_aria: 'Puzzle options',
+      puzzle_correct: 'Correct! Choose a clue to apply.',
+      puzzle_incorrect_retry: 'Incorrect. You can try once more.',
+      puzzle_incorrect_locked: 'Incorrect. Puzzle locked for this round.',
+      puzzle_retry_note: 'One retry remaining.',
+      puzzle_choose_clue: 'Choose your clue:',
+      // Puzzle prompts/options
+      puzzle_riddle_sky_prompt: 'Riddle: What color is the clear daytime sky?',
+      puzzle_arith_12_7_prompt: 'Arithmetic: What is 12 + 7?',
+      puzzle_seq_2x_prompt: 'Sequence: 2, 4, 8, 16, ?',
+      puzzle_opt_blue: 'Blue',
+      puzzle_opt_green: 'Green',
+      puzzle_opt_red: 'Red',
+      puzzle_opt_19: '19',
+      puzzle_opt_20: '20',
+      puzzle_opt_18: '18',
+      puzzle_opt_32: '32',
+      puzzle_opt_24: '24',
+      puzzle_opt_20num: '20'
     }
   },
   te: {
@@ -256,7 +279,29 @@ const resources = {
       language_en: 'English',
       language_te: 'తెలుగు',
       language_hi: 'हिन्दी',
-      themeLabel: 'థీమ్'
+      themeLabel: 'థీమ్',
+      // Puzzle Mode
+      puzzle_mode_enable_label: 'పజిల్ మోడ్ ప్రారంభించండి',
+      puzzle_mode_title: 'సూచన కోసం పజిల్ పరిష్కరించండి',
+      puzzle_options_aria: 'పజిల్ ఎంపికలు',
+      puzzle_correct: 'సరైంది! ఇప్పుడే ఒక సూచనను ఎంచుకోండి.',
+      puzzle_incorrect_retry: 'తప్పు. ఇంకోసారి ప్రయత్నించవచ్చు.',
+      puzzle_incorrect_locked: 'తప్పు. ఈ రౌండ్‌కు పజిల్ లాక్ అయింది.',
+      puzzle_retry_note: 'ఒకసారి ప్రయత్నం మిగిలి ఉంది.',
+      puzzle_choose_clue: 'మీ సూచనను ఎంచుకోండి:',
+      // Puzzle prompts/options
+      puzzle_riddle_sky_prompt: 'బుద్ధిప్రశ్న: పగటి సమయంలో ఆకాశం ఏ రంగులో ఉంటుంది?',
+      puzzle_arith_12_7_prompt: 'అంకగణితం: 12 + 7 ఎంత?',
+      puzzle_seq_2x_prompt: 'క్రమం: 2, 4, 8, 16, ?',
+      puzzle_opt_blue: 'నీలం',
+      puzzle_opt_green: 'ఆకుపచ్చ',
+      puzzle_opt_red: 'ఎరుపు',
+      puzzle_opt_19: '19',
+      puzzle_opt_20: '20',
+      puzzle_opt_18: '18',
+      puzzle_opt_32: '32',
+      puzzle_opt_24: '24',
+      puzzle_opt_20num: '20'
     }
   },
   hi: {
@@ -374,7 +419,29 @@ const resources = {
       language_en: 'English',
       language_te: 'తెలుగు',
       language_hi: 'हिन्दी',
-      themeLabel: 'थीम'
+      themeLabel: 'थीम',
+      // Puzzle Mode
+      puzzle_mode_enable_label: 'पज़ल मोड सक्षम करें',
+      puzzle_mode_title: 'सूत्र पाने के लिए पज़ल हल करें',
+      puzzle_options_aria: 'पज़ल विकल्प',
+      puzzle_correct: 'सही! अब एक संकेत चुनें.',
+      puzzle_incorrect_retry: 'गलत. आप एक बार और प्रयास कर सकते हैं.',
+      puzzle_incorrect_locked: 'गलत. इस राउंड के लिए पज़ल लॉक हो गया है.',
+      puzzle_retry_note: 'एक और प्रयास शेष है.',
+      puzzle_choose_clue: 'अपना संकेत चुनें:',
+      // Puzzle prompts/options
+      puzzle_riddle_sky_prompt: 'पहेली: साफ दिन में आकाश का रंग क्या होता है?',
+      puzzle_arith_12_7_prompt: 'गणित: 12 + 7 कितना होता है?',
+      puzzle_seq_2x_prompt: 'क्रम: 2, 4, 8, 16, ?',
+      puzzle_opt_blue: 'नीला',
+      puzzle_opt_green: 'हरा',
+      puzzle_opt_red: 'लाल',
+      puzzle_opt_19: '19',
+      puzzle_opt_20: '20',
+      puzzle_opt_18: '18',
+      puzzle_opt_32: '32',
+      puzzle_opt_24: '24',
+      puzzle_opt_20num: '20'
     }
   }
 };

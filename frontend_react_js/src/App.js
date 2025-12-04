@@ -8,7 +8,7 @@ import { addResult } from './leaderboard';
 import AchievementsModal from './AchievementsModal';
 import StatisticsModal from './StatisticsModal';
 import { incrementTotalGames } from './statistics';
-import { ACHIEVEMENT_META, readAchievements, unlockAchievements, writeAchievements } from './achievements';
+import { ACHIEVEMENT_META, readAchievements, unlockAchievements } from './achievements';
 import {
   LEVELS,
   LEVEL_ORDER,
@@ -184,7 +184,6 @@ function App() {
   // Attempts remaining derived from difficulty and attempts used
   const maxAttempts = MAX_ATTEMPTS[difficulty];
   const attemptsRemaining = Math.max(0, maxAttempts - attempts);
-  const attemptsLiveText = `Attempts remaining: ${attemptsRemaining}.`;
 
   // Guess History state: array of { index, value, result, ts, id }
   const [history, setHistory] = useState([]);
@@ -198,6 +197,15 @@ function App() {
   const [winTimeBonusPct, setWinTimeBonusPct] = useState(0); // for UI breakdown on success
   const timerRef = useRef(null);
   const lastAnnouncedRef = useRef(null); // to avoid SR spam
+
+  // Puzzle Mode state
+  const [puzzleMode, setPuzzleMode] = useState(false);
+  const [puzzle, setPuzzle] = useState(null); // { id, type, promptKey, options: [{key, correct}], defaultHintType }
+  const [puzzleAnswered, setPuzzleAnswered] = useState(false);
+  const [puzzleRetryUsed, setPuzzleRetryUsed] = useState(false);
+  const [puzzleFeedback, setPuzzleFeedback] = useState(''); // localized text
+  const [puzzleAria, setPuzzleAria] = useState(''); // aria-live region
+  const [puzzleLocked, setPuzzleLocked] = useState(false);
 
   /** Refs for accessibility and UX */
   const inputRef = useRef(null);
@@ -256,8 +264,11 @@ function App() {
   function applyDifficultyPreset(nextDifficulty) {
     setDifficulty(nextDifficulty);
     const preset = DIFFICULTIES[nextDifficulty];
+    // Update range and new secret according to difficulty
     setRange({ min: preset.min, max: preset.max });
     setSecret(generateSecret(preset.min, preset.max));
+
+    // Reset round state
     setInput('');
     setFeedback('');
     setAttempts(0);
@@ -266,7 +277,12 @@ function App() {
     resetHints();
     resetHistory();
     setRoundNewlyUnlocked([]);
+
+    // Timer and puzzle resets
     resetAndMaybeStartTimer(nextDifficulty);
+    resetPuzzleState(levelIndex(level) + attempts);
+
+    // Return focus to input for accessibility
     setTimeout(() => inputRef.current?.focus(), 0);
   }
 
@@ -365,8 +381,12 @@ function App() {
   useEffect(() => {
     if (status !== 'playing') {
       clearTimer();
+      // close/lock puzzle panel when round ends
+      setPuzzleLocked(true);
     } else if (timerChallenge) {
       resetAndMaybeStartTimer(difficulty);
+      // ensure puzzle is available for a new playing round
+      resetPuzzleState(levelIndex(level) + attempts);
     }
     return () => {};
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -382,6 +402,62 @@ function App() {
     }
     return '';
   }, [timeLeft, timerChallenge, status, totalTime, t]);
+
+  // Deterministic small puzzle pool for tests; rotate based on attempts + level index
+  const PUZZLES = [
+    // Riddle/trivia
+    { id: 'riddle_sky', type: 'riddle', promptKey: 'puzzle_riddle_sky_prompt', options: [
+      { key: 'puzzle_opt_blue', correct: true },
+      { key: 'puzzle_opt_green', correct: false },
+      { key: 'puzzle_opt_red', correct: false },
+    ], defaultHintType: HINT_TYPES.range },
+    // Arithmetic
+    { id: 'arith_12_7', type: 'arith', promptKey: 'puzzle_arith_12_7_prompt', options: [
+      { key: 'puzzle_opt_19', correct: true },
+      { key: 'puzzle_opt_20', correct: false },
+      { key: 'puzzle_opt_18', correct: false },
+    ], defaultHintType: HINT_TYPES.parity },
+    // Pattern
+    { id: 'seq_pow2', type: 'sequence', promptKey: 'puzzle_seq_2x_prompt', options: [
+      { key: 'puzzle_opt_32', correct: true },
+      { key: 'puzzle_opt_24', correct: false },
+      { key: 'puzzle_opt_20', correct: false },
+    ], defaultHintType: HINT_TYPES.digit },
+  ];
+
+  function levelIndex(lvl) {
+    return LEVEL_ORDER.indexOf(lvl);
+  }
+
+  function nextPuzzleForRound(seed = 0) {
+    // Deterministic rotation using seed
+    const idx = Math.abs(seed) % PUZZLES.length;
+    return PUZZLES[idx];
+  }
+
+  function resetPuzzleState(seed = 0) {
+    setPuzzle(nextPuzzleForRound(seed));
+    setPuzzleAnswered(false);
+    setPuzzleRetryUsed(false);
+    setPuzzleFeedback('');
+    setPuzzleAria('');
+    setPuzzleLocked(false);
+  }
+
+  function applyHintByType(type) {
+    switch (type) {
+      case HINT_TYPES.parity:
+        return handleParityHint();
+      case HINT_TYPES.range:
+        return handleRangeHint();
+      case HINT_TYPES.digit:
+        return handleDigitHint();
+      case HINT_TYPES.proximity:
+        return handleProximityHint();
+      default:
+        return handleRangeHint();
+    }
+  }
 
   // Reset all hint state
   function resetHints() {
@@ -413,6 +489,7 @@ function App() {
     resetHistory();
     setRoundNewlyUnlocked([]);
     resetAndMaybeStartTimer(difficulty);
+    resetPuzzleState(levelIndex(level) + attempts);
     setTimeout(() => inputRef.current?.focus(), 0);
   }
 
@@ -432,6 +509,7 @@ function App() {
     resetHistory();
     setRoundNewlyUnlocked([]);
     resetAndMaybeStartTimer(next);
+    resetPuzzleState(levelIndex(level) + attempts);
     setTimeout(() => inputRef.current?.focus(), 0);
   }
 
@@ -443,6 +521,7 @@ function App() {
     // Apply preset difficulty but allow user to change later
     const preset = LEVEL_PRESET_DIFFICULTY[nextLevel] || 'medium';
     applyDifficultyPreset(preset);
+    resetPuzzleState(levelIndex(nextLevel));
   }
 
   // Check and unlock next level on a win (single round)
@@ -531,13 +610,11 @@ function App() {
       const baseScore = computeScore(nextAttempts, range.max);
       const penalty = Math.min(baseScore, hintCount * HINT_PENALTY);
       let finalBase = Math.max(0, baseScore - penalty);
-      let multiplier = 1;
       let finalScore = finalBase;
       let timeBonusPct = 0;
 
       if (timerChallenge && totalTime > 0) {
         const bonus = 1 + (Math.max(0, timeLeft) / totalTime) * TIME_BONUS_WEIGHT;
-        multiplier = bonus;
         timeBonusPct = Math.round((bonus - 1) * 100);
         finalScore = Math.round(clamp(finalBase * bonus, 0, MAX_FINAL_SCORE));
       } else {
@@ -722,6 +799,44 @@ function App() {
     }
 
     announceHint(msg, HINT_TYPES.proximity);
+  }
+
+  function handlePuzzleAnswer(option, preferredHintType = null) {
+    if (!puzzle || puzzleLocked || status !== 'playing') return;
+    const isCorrect = Boolean(option?.correct);
+    if (isCorrect) {
+      setPuzzleAnswered(true);
+      setPuzzleLocked(true);
+      const hintType = preferredHintType || puzzle.defaultHintType || HINT_TYPES.range;
+      // Announce feedback
+      const msg = t('puzzle_correct');
+      setPuzzleFeedback(msg);
+      setPuzzleAria(msg);
+      // Apply selected hint immediately (consumes and penalizes as usual)
+      applyHintByType(hintType);
+      // Optional stat: increment puzzlesSolved count
+      try {
+        const raw = window.localStorage.getItem('ngg_stats_v1');
+        let parsed = raw ? JSON.parse(raw) : { totalGames: 0 };
+        if (!parsed || typeof parsed !== 'object') parsed = { totalGames: 0 };
+        parsed.puzzlesSolved = (parsed.puzzlesSolved || 0) + 1;
+        window.localStorage.setItem('ngg_stats_v1', JSON.stringify(parsed));
+      } catch {}
+      return;
+    } else {
+      // wrong answer -> allow a single retry then lock
+      if (!puzzleRetryUsed) {
+        setPuzzleRetryUsed(true);
+        const msg = t('puzzle_incorrect_retry');
+        setPuzzleFeedback(msg);
+        setPuzzleAria(msg);
+      } else {
+        setPuzzleLocked(true);
+        const msg = t('puzzle_incorrect_locked');
+        setPuzzleFeedback(msg);
+        setPuzzleAria(msg);
+      }
+    }
   }
 
   function onKeyDown(e) {
@@ -913,6 +1028,127 @@ function App() {
                 >
                   <span aria-hidden="true">⏱ {formatSeconds(timeLeft)}</span>
                   <span className="sr-only">{timerAriaText}</span>
+                </div>
+              )}
+
+              {/* Puzzle Mode toggle */}
+              <div className="ngg-input-row" style={{ gridTemplateColumns: 'auto 1fr' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    id="puzzleMode"
+                    type="checkbox"
+                    checked={puzzleMode}
+                    onChange={(e) => {
+                      setPuzzleMode(e.target.checked);
+                      if (e.target.checked && status === 'playing') {
+                        resetPuzzleState(levelIndex(level) + attempts);
+                      }
+                    }}
+                    aria-label={t('puzzle_mode_enable_label')}
+                    data-testid="toggle-puzzle-mode"
+                  />
+                  <label htmlFor="puzzleMode" className="ngg-label" style={{ margin: 0 }}>
+                    {t('puzzle_mode_enable_label')}
+                  </label>
+                </div>
+              </div>
+
+              {/* Puzzle Panel */}
+              {puzzleMode && status === 'playing' && puzzle && (
+                <div
+                  className="ngg-puzzle-panel"
+                  data-testid="puzzle-panel"
+                  style={{
+                    marginTop: 8,
+                    border: '1px solid var(--border-color, rgba(17,24,39,0.12))',
+                    borderRadius: 12,
+                    padding: 12,
+                    background: 'linear-gradient(180deg, rgba(37,99,235,0.05), rgba(255,255,255,0.8))'
+                  }}
+                >
+                  <div className="sr-only" aria-live="polite" aria-atomic="true">
+                    {puzzleAria}
+                  </div>
+                  <div className="ngg-label" style={{ marginBottom: 6 }}>
+                    {t('puzzle_mode_title')}
+                  </div>
+                  <div style={{ fontSize: 14, marginBottom: 8 }}>
+                    {t(puzzle.promptKey)}
+                  </div>
+                  <div role="group" aria-label={t('puzzle_options_aria')} style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {puzzle.options.map((opt, idx) => (
+                      <button
+                        key={String(idx)}
+                        type="button"
+                        className="ngg-btn-secondary"
+                        disabled={puzzleLocked}
+                        onClick={() => handlePuzzleAnswer(opt, null)}
+                        data-testid={`puzzle-opt-${idx}`}
+                        style={{ borderColor: 'var(--ocean-secondary)', color: 'var(--ocean-secondary)' }}
+                        title={t(opt.key)}
+                        aria-label={t(opt.key)}
+                      >
+                        {t(opt.key)}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* On correct, allow selecting which clue to grant immediately */}
+                  <div style={{ marginTop: 10 }}>
+                    <span className="ngg-attempts" aria-live="polite">{puzzleFeedback}</span>
+                  </div>
+                  <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <span className="ngg-label" style={{ alignSelf: 'center' }}>{t('puzzle_choose_clue')}</span>
+                    <button
+                      type="button"
+                      className="ngg-btn-secondary"
+                      disabled={!puzzleAnswered || (puzzleLocked && !puzzleAnswered)}
+                      onClick={() => handlePuzzleAnswer({ correct: true }, HINT_TYPES.range)}
+                      data-testid="puzzle-clue-range"
+                      style={{ borderColor: 'var(--ocean-secondary)', color: 'var(--ocean-secondary)' }}
+                      aria-label={t('hint_range_aria')}
+                    >
+                      {t('hint_range_btn')}
+                    </button>
+                    <button
+                      type="button"
+                      className="ngg-btn-secondary"
+                      disabled={!puzzleAnswered}
+                      onClick={() => handlePuzzleAnswer({ correct: true }, HINT_TYPES.parity)}
+                      data-testid="puzzle-clue-parity"
+                      style={{ borderColor: 'var(--ocean-secondary)', color: 'var(--ocean-secondary)' }}
+                      aria-label={t('hint_parity_aria')}
+                    >
+                      {t('hint_parity_btn')}
+                    </button>
+                    <button
+                      type="button"
+                      className="ngg-btn-secondary"
+                      disabled={!puzzleAnswered}
+                      onClick={() => handlePuzzleAnswer({ correct: true }, HINT_TYPES.digit)}
+                      data-testid="puzzle-clue-digit"
+                      style={{ borderColor: 'var(--ocean-secondary)', color: 'var(--ocean-secondary)' }}
+                      aria-label={t('hint_digit_aria')}
+                    >
+                      {t('hint_digit_btn')}
+                    </button>
+                    <button
+                      type="button"
+                      className="ngg-btn-secondary"
+                      disabled={!puzzleAnswered}
+                      onClick={() => handlePuzzleAnswer({ correct: true }, HINT_TYPES.proximity)}
+                      data-testid="puzzle-clue-proximity"
+                      style={{ borderColor: 'var(--ocean-secondary)', color: 'var(--ocean-secondary)' }}
+                      aria-label={t('hint_proximity_aria')}
+                    >
+                      {t('hint_proximity_btn')}
+                    </button>
+                  </div>
+                  {puzzleRetryUsed && !puzzleAnswered && !puzzleLocked ? (
+                    <div className="ngg-attempts" aria-live="polite" style={{ marginTop: 8 }}>
+                      {t('puzzle_retry_note')}
+                    </div>
+                  ) : null}
                 </div>
               )}
               {timerChallenge && status === 'timeout' && (

@@ -470,6 +470,19 @@
   margin-top: 6px;
 }
 
+/* Puzzle panel subtle animation */
+.ngg-puzzle-panel {
+  transition: transform 200ms ease, box-shadow 200ms ease;
+  box-shadow: var(--shadow-sm);
+}
+.ngg-puzzle-panel:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ngg-puzzle-panel { transition: none; }
+}
+
 /* Responsive adjustments */
 @media (max-width: 640px) {
   .ngg-card { padding: 20px; }
