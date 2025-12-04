@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
+// Import success sound from src so CRA bundles and serves the correct URL
+import successChimeUrl from './assets/success-chime.mp3';
 
 /**
  * Number Guessing Game - Ocean Professional themed
@@ -372,10 +374,16 @@ function App() {
       {/* Hidden/preloaded audio element; will only play on user gesture via handleSubmit */}
       <audio
         ref={successAudioRef}
-        src="/assets/success-chime.mp3"
+        src={successChimeUrl}
         preload="auto"
         aria-hidden="true"
         style={{ display: 'none' }}
+        onCanPlay={() => {
+          // ensure volume is initialized when media is ready
+          if (successAudioRef.current) {
+            successAudioRef.current.volume = SUCCESS_SOUND_VOLUME;
+          }
+        }}
       />
 
       <header className="ngg-header">
