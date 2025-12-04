@@ -175,6 +175,9 @@ function LeaderboardRow({ entry, variant }) {
     <li className="ngg-leaderboard-item">
       <div className="ngg-leaderboard-meta">
         <DifficultyTag difficulty={entry.difficulty} />
+        {entry.timerChallenge ? (
+          <span className="ngg-chip" title="Timer Challenge" aria-label="Timer Challenge">⏱</span>
+        ) : null}
         <span className="ngg-date">{formatDate(entry.timestamp)}</span>
       </div>
       <div className="ngg-leaderboard-stats">

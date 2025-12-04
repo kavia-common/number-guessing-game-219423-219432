@@ -99,8 +99,8 @@ test('history resets on New Game and difficulty change', () => {
 test('history integrates with timer mode and loss/win without regressions', () => {
   render(<App />);
 
-  // Enable timer and make a couple of guesses
-  fireEvent.click(screen.getByLabelText(/Enable Timer Mode/i));
+  // Enable Timer Challenge and make a couple of guesses
+  fireEvent.click(screen.getByLabelText(/Enable Timer Challenge/i));
   submitGuess(1);
   submitGuess(2);
 
@@ -110,7 +110,7 @@ test('history integrates with timer mode and loss/win without regressions', () =
 
   // Advance timer to cause timeout loss on easy? Ensure we are in default Medium; switch to easy for deterministic 30s
   fireEvent.change(screen.getByLabelText(/Select difficulty/i), { target: { value: 'easy' } });
-  fireEvent.click(screen.getByLabelText(/Enable Timer Mode/i));
+  fireEvent.click(screen.getByLabelText(/Enable Timer Challenge/i));
   act(() => {
     jest.advanceTimersByTime(30000);
   });

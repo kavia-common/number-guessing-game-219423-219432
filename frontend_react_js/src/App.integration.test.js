@@ -33,8 +33,8 @@ test('game renders, supports difficulty changes, guessing, reset, scoring, hints
   expect(input).toBeInTheDocument();
   expect(guessBtn).toBeInTheDocument();
 
-  // Timer Mode toggle presence
-  expect(screen.getByLabelText(/Enable Timer Mode/i)).toBeInTheDocument();
+  // Timer Challenge toggle presence
+  expect(screen.getByLabelText(/Enable Timer Challenge/i)).toBeInTheDocument();
 
   // Default difficulty is Medium (1-50)
   expect(screen.getByText(/between 1 and 50/i)).toBeInTheDocument();
@@ -237,10 +237,10 @@ test('reaching zero attempts causes a loss, disables inputs, and shows New Game;
   expect(screen.getByRole('button', { name: /Guess/i })).toBeDisabled();
   expect(screen.getByRole('button', { name: /New Game/i })).toBeInTheDocument();
 
-  // Timer mode can also end the game; ensure enabling timer on new game still works
+  // Timer challenge can also end the game; ensure enabling timer on new game still works
   const newGameBtn = screen.getByRole('button', { name: /New Game/i });
   fireEvent.click(newGameBtn);
-  fireEvent.click(screen.getByLabelText(/Enable Timer Mode/i));
+  fireEvent.click(screen.getByLabelText(/Enable Timer Challenge/i));
   expect(screen.getByText(/⏱/)).toBeInTheDocument();
 });
 

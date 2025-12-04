@@ -104,12 +104,12 @@ test('Clear Leaderboard empties data', () => {
   expect(readResults().length).toBe(0);
 });
 
-test('does not record entry on timeout loss', () => {
+test('does not record entry on timeout loss (Timer Challenge)', () => {
   render(<App />);
 
-  // Enable timer mode in easy and advance until timeout
+  // Enable Timer Challenge in easy and advance until timeout
   fireEvent.change(screen.getByLabelText(/Select difficulty/i), { target: { value: 'easy' } });
-  fireEvent.click(screen.getByLabelText(/Enable Timer Mode/i));
+  fireEvent.click(screen.getByLabelText(/Enable Timer Challenge/i));
 
   act(() => {
     jest.advanceTimersByTime(30000);
@@ -121,4 +121,32 @@ test('does not record entry on timeout loss', () => {
 
   // No entries persisted
   expect(readResults().length).toBe(0);
+});
+
+test('Leaderboard entries include timer metadata when winning in Timer Challenge', () => {
+  render(<App />);
+  fireEvent.change(screen.getByLabelText(/Select difficulty/i), { target: { value: 'easy' } });
+  fireEvent.click(screen.getByLabelText(/Enable Timer Challenge/i));
+
+  // Make a quick win to retain some time remaining
+  const input = screen.getByLabelText(/Enter your guess/i);
+  const guessBtn = screen.getByRole('button', { name: /Guess/i });
+  for (let g = 1; g <= 20; g++) {
+    fireEvent.change(input, { target: { value: String(g) } });
+    fireEvent.click(guessBtn);
+    const feedbackEl = screen.getByText(/Too low|Too high|Correct!/i);
+    if (/Correct!/i.test(feedbackEl.textContent)) {
+      break;
+    }
+  }
+
+  const results = readResults();
+  expect(results.length).toBeGreaterThan(0);
+  const r0 = results[0];
+  expect(r0.timerChallenge).toBe(true);
+  if (r0.timeRemaining != null && r0.totalTime != null) {
+    expect(typeof r0.timeRemaining).toBe('number');
+    expect(typeof r0.totalTime).toBe('number');
+    expect(r0.timeRemaining).toBeLessThanOrEqual(r0.totalTime);
+  }
 });

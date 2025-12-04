@@ -91,8 +91,8 @@ test('Achievements do not unlock on timeout/loss', () => {
   render(<App />);
   fireEvent.change(screen.getByLabelText(/Select difficulty/i), { target: { value: 'easy' } });
 
-  // Enable timer mode and cause timeout
-  fireEvent.click(screen.getByLabelText(/Enable Timer Mode/i));
+  // Enable Timer Challenge and cause timeout
+  fireEvent.click(screen.getByLabelText(/Enable Timer Challenge/i));
   act(() => { jest.advanceTimersByTime(30000); });
 
   expect(screen.getByText(/Time’s up!|Time's up!/i)).toBeInTheDocument();

@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'ngg_leaderboard_v1';
+const STORAGE_KEY = 'ngg_leaderboard_v2';
 
 /**
  * Shape of a result entry:
@@ -13,16 +13,23 @@ export function readResults() {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    // Ensure minimum fields presence; filter out invalid entries
-    return parsed.filter(
-      (e) =>
-        e &&
-        typeof e === 'object' &&
-        typeof e.timestamp === 'number' &&
-        typeof e.difficulty === 'string' &&
-        typeof e.attempts === 'number' &&
-        typeof e.score === 'number'
-    );
+    // Ensure minimum fields presence; filter out invalid entries and normalize new metadata
+    return parsed
+      .filter(
+        (e) =>
+          e &&
+          typeof e === 'object' &&
+          typeof e.timestamp === 'number' &&
+          typeof e.difficulty === 'string' &&
+          typeof e.attempts === 'number' &&
+          typeof e.score === 'number'
+      )
+      .map((e) => ({
+        ...e,
+        timerChallenge: Boolean(e.timerChallenge),
+        timeRemaining: typeof e.timeRemaining === 'number' ? e.timeRemaining : null,
+        totalTime: typeof e.totalTime === 'number' ? e.totalTime : null,
+      }));
   } catch {
     return [];
   }
@@ -49,7 +56,7 @@ export function clearResults() {
 }
 
 // PUBLIC_INTERFACE
-export function addResult({ timestamp, difficulty, attempts, score }) {
+export function addResult({ timestamp, difficulty, attempts, score, timerChallenge = false, timeRemaining = null, totalTime = null }) {
   /** Add a single result and cap list size to top 50 to prevent unbounded growth.
    * We keep a single list; sorting happens per view.
    */
@@ -59,6 +66,9 @@ export function addResult({ timestamp, difficulty, attempts, score }) {
     difficulty,
     attempts,
     score,
+    timerChallenge: Boolean(timerChallenge),
+    timeRemaining: typeof timeRemaining === 'number' ? timeRemaining : null,
+    totalTime: typeof totalTime === 'number' ? totalTime : null,
   };
   const existing = readResults();
   const combined = [nowEntry, ...existing];

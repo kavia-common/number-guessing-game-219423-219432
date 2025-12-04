@@ -69,8 +69,8 @@ test('renders header, controls, difficulty selector, attempts counters, and hint
   expect(screen.getByRole('button', { name: /Starts With/i })).toBeEnabled();
   expect(screen.getByRole('button', { name: /Proximity/i })).toBeEnabled();
 
-  // Timer Mode toggle present
-  expect(screen.getByLabelText(/Enable Timer Mode/i)).toBeInTheDocument();
+  // Timer Challenge toggle present
+  expect(screen.getByLabelText(/Enable Timer Challenge/i)).toBeInTheDocument();
 });
 
 test('score is hidden initially and appears after a correct guess', () => {
@@ -165,11 +165,11 @@ test('hint state resets on New Game and on difficulty change', () => {
   expect(screen.getByRole('button', { name: /Even\/Odd/i })).toBeEnabled();
 });
 
-test('Timer Mode countdown displays and stops on win; no score on timeout', () => {
+test('Timer Challenge countdown displays and stops on win; time bonus breakdown shown', () => {
   render(<App />);
   fireEvent.change(screen.getByLabelText(/Select difficulty/i), { target: { value: 'easy' } });
 
-  fireEvent.click(screen.getByLabelText(/Enable Timer Mode/i));
+  fireEvent.click(screen.getByLabelText(/Enable Timer Challenge/i));
   expect(screen.getByText(/⏱/)).toBeInTheDocument();
 
   const input = screen.getByLabelText(/Enter your guess/i);
@@ -183,6 +183,8 @@ test('Timer Mode countdown displays and stops on win; no score on timeout', () =
     }
   }
   expect(screen.getByText(/Score:/i)).toBeInTheDocument();
+  // time bonus breakdown visible
+  expect(screen.getByText(/Time bonus \+\d+%/i)).toBeInTheDocument();
 
   act(() => {
     jest.advanceTimersByTime(5000);
@@ -190,11 +192,11 @@ test('Timer Mode countdown displays and stops on win; no score on timeout', () =
   expect(screen.getByText(/Score:/i)).toBeInTheDocument();
 });
 
-test('Timer Mode timeout transitions to loss state and disables inputs; score not shown', () => {
+test('Timer Challenge timeout transitions to loss state and disables inputs; score not shown', () => {
   render(<App />);
 
   fireEvent.change(screen.getByLabelText(/Select difficulty/i), { target: { value: 'easy' } });
-  fireEvent.click(screen.getByLabelText(/Enable Timer Mode/i));
+  fireEvent.click(screen.getByLabelText(/Enable Timer Challenge/i));
 
   act(() => {
     jest.advanceTimersByTime(30000);
@@ -210,10 +212,10 @@ test('Timer Mode timeout transitions to loss state and disables inputs; score no
   expect(screen.getByRole('button', { name: /New Game/i })).toBeInTheDocument();
 });
 
-test('Timer resets on New Game and on difficulty change', () => {
+test('Timer resets on New Game and on difficulty change (Timer Challenge enabled)', () => {
   render(<App />);
   fireEvent.change(screen.getByLabelText(/Select difficulty/i), { target: { value: 'easy' } });
-  fireEvent.click(screen.getByLabelText(/Enable Timer Mode/i));
+  fireEvent.click(screen.getByLabelText(/Enable Timer Challenge/i));
 
   act(() => {
     jest.advanceTimersByTime(5000);

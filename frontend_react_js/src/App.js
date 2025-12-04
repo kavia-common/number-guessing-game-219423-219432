@@ -46,17 +46,34 @@ const DIFFICULTIES = {
 // Fixed penalty per hint usage applied to final score on win
 const HINT_PENALTY = 100;
 
-// PUBLIC_INTERFACE
-// Default timer durations by difficulty (in seconds)
-const TIMER_DEFAULTS = {
+/** PUBLIC_INTERFACE
+ * Default Timer Challenge durations by difficulty (in seconds)
+ * These are distinct for the challenge countdown.
+ */
+const TIMER_CHALLENGE_DEFAULTS = {
   easy: 30,
   medium: 45,
   hard: 60,
 };
 
+// internal helper to clamp a number between min and max
+function clamp(n, min, max) {
+  return Math.max(min, Math.min(max, n));
+}
+
+/** PUBLIC_INTERFACE
+ * Time bonus up to +50% when winning with full time left in Timer Challenge.
+ * finalScore = max(0, baseScore - hintPenalty) * (1 + (remaining/total) * TIME_BONUS_WEIGHT)
+ */
+const TIME_BONUS_WEIGHT = 0.5;
+
 // PUBLIC_INTERFACE
 // Volume constant for success sound (0.0 - 1.0)
 const SUCCESS_SOUND_VOLUME = 0.6;
+
+// PUBLIC_INTERFACE
+// Clamp final score to a reasonable upper bound to avoid runaway values.
+const MAX_FINAL_SCORE = 5000;
 
 // PUBLIC_INTERFACE
 // Maximum allowed attempts per difficulty
@@ -171,9 +188,11 @@ function App() {
   const [repeatWarning, setRepeatWarning] = useState(''); // inline warning for repeated guesses
   const [historyLive, setHistoryLive] = useState(''); // aria-live updates for history
 
-  // Timer Mode
-  const [timerMode, setTimerMode] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(TIMER_DEFAULTS[difficulty]);
+  // Timer Challenge Mode (distinct dedicated mode)
+  const [timerChallenge, setTimerChallenge] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(TIMER_CHALLENGE_DEFAULTS[difficulty]);
+  const [totalTime, setTotalTime] = useState(TIMER_CHALLENGE_DEFAULTS[difficulty]);
+  const [winTimeBonusPct, setWinTimeBonusPct] = useState(0); // for UI breakdown on success
   const timerRef = useRef(null);
   const lastAnnouncedRef = useRef(null); // to avoid SR spam
 
@@ -249,7 +268,7 @@ function App() {
   }
 
   /**
-   * Compute a proportional score for a win.
+   * Compute a proportional base score for a win (without time bonus).
    * Fewer attempts yield higher score, scaled by the difficulty (range max).
    * PUBLIC_INTERFACE
    */
@@ -298,12 +317,14 @@ function App() {
   }
 
   // PUBLIC_INTERFACE
-  // Reset timer based on current difficulty and (re)start when timerMode is enabled
+  // Reset timer based on current difficulty and (re)start when Timer Challenge is enabled
   function resetAndMaybeStartTimer(nextDifficulty = difficulty) {
-    const duration = TIMER_DEFAULTS[nextDifficulty];
+    const duration = TIMER_CHALLENGE_DEFAULTS[nextDifficulty];
+    setTotalTime(duration);
     setTimeLeft(duration);
+    setWinTimeBonusPct(0);
     clearTimer();
-    if (timerMode && status === 'playing') {
+    if (timerChallenge && status === 'playing') {
       // Start ticking every 1s
       timerRef.current = setInterval(() => {
         setTimeLeft((prev) => {
@@ -323,9 +344,9 @@ function App() {
     }
   }
 
-  // Start/stop timer on mode toggle
+  // Start/stop timer on challenge toggle
   useEffect(() => {
-    if (timerMode) {
+    if (timerChallenge) {
       resetAndMaybeStartTimer(difficulty);
     } else {
       clearTimer();
@@ -334,13 +355,13 @@ function App() {
       clearTimer();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timerMode]);
+  }, [timerChallenge]);
 
   // Stop timer when status changes out of 'playing' (e.g., win or timeout or out_of_attempts)
   useEffect(() => {
     if (status !== 'playing') {
       clearTimer();
-    } else if (timerMode) {
+    } else if (timerChallenge) {
       resetAndMaybeStartTimer(difficulty);
     }
     return () => {};
@@ -349,14 +370,14 @@ function App() {
 
   // Update countdown announcement without spamming
   const timerAriaText = useMemo(() => {
-    if (!timerMode || status !== 'playing') return '';
-    const announce = timeLeft <= 10 || timeLeft % 5 === 0 || timeLeft === TIMER_DEFAULTS[difficulty];
+    if (!timerChallenge || status !== 'playing') return '';
+    const announce = timeLeft <= 10 || timeLeft % 5 === 0 || timeLeft === totalTime;
     if (announce && lastAnnouncedRef.current !== timeLeft) {
       lastAnnouncedRef.current = timeLeft;
-      return `⏱ ${formatSeconds(timeLeft)}`;
+      return `${t('timer_challenge_countdown', { time: formatSeconds(timeLeft) })}`;
     }
     return '';
-  }, [timeLeft, timerMode, status, difficulty]);
+  }, [timeLeft, timerChallenge, status, totalTime, t]);
 
   // Reset all hint state
   function resetHints() {
@@ -505,8 +526,22 @@ function App() {
     if (resultLabel === 'correct') {
       const baseScore = computeScore(nextAttempts, range.max);
       const penalty = Math.min(baseScore, hintCount * HINT_PENALTY);
-      const finalScore = Math.max(0, baseScore - penalty);
+      let finalBase = Math.max(0, baseScore - penalty);
+      let multiplier = 1;
+      let finalScore = finalBase;
+      let timeBonusPct = 0;
+
+      if (timerChallenge && totalTime > 0) {
+        const bonus = 1 + (Math.max(0, timeLeft) / totalTime) * TIME_BONUS_WEIGHT;
+        multiplier = bonus;
+        timeBonusPct = Math.round((bonus - 1) * 100);
+        finalScore = Math.round(clamp(finalBase * bonus, 0, MAX_FINAL_SCORE));
+      } else {
+        finalScore = Math.round(clamp(finalBase, 0, MAX_FINAL_SCORE));
+      }
+
       setScore(finalScore);
+      setWinTimeBonusPct(timeBonusPct);
 
       try {
         addResult({
@@ -514,6 +549,9 @@ function App() {
           difficulty,
           attempts: nextAttempts,
           score: finalScore,
+          timerChallenge: Boolean(timerChallenge),
+          timeRemaining: timerChallenge ? Math.max(0, timeLeft) : null,
+          totalTime: timerChallenge ? totalTime : null,
         });
       } catch {
         // ignore storage errors
@@ -521,7 +559,15 @@ function App() {
 
       await playSuccessSound();
 
-      setFeedback(t('feedback_correct', { secret, score: finalScore }));
+      setFeedback(
+        timerChallenge
+          ? t('feedback_correct_timebonus', {
+              secret,
+              score: finalScore,
+              bonus: timeBonusPct,
+            })
+          : t('feedback_correct', { secret, score: finalScore })
+      );
       setStatus('won');
 
       // Unlock next level for wins only (not losses/timeouts)
@@ -811,7 +857,7 @@ function App() {
             {unlockMessage}
           </div>
 
-          {/* Difficulty selector and Timer Mode toggle */}
+          {/* Difficulty selector and Timer Challenge toggle */}
           <div className="ngg-form" role="group" aria-labelledby="difficulty-label">
             <label id="difficulty-label" htmlFor="difficulty" className="ngg-label">
               {t('difficultyLabel')}
@@ -833,17 +879,17 @@ function App() {
             <div className="ngg-input-row" style={{ gridTemplateColumns: 'auto 1fr' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input
-                  id="timerMode"
+                  id="timerChallenge"
                   type="checkbox"
-                  checked={timerMode}
-                  onChange={(e) => setTimerMode(e.target.checked)}
-                  aria-label={t('timerEnableLabel')}
+                  checked={timerChallenge}
+                  onChange={(e) => setTimerChallenge(e.target.checked)}
+                  aria-label={t('timerChallengeEnableLabel')}
                 />
-                <label htmlFor="timerMode" className="ngg-label" style={{ margin: 0 }}>
-                  {t('timerEnableLabel')}
+                <label htmlFor="timerChallenge" className="ngg-label" style={{ margin: 0 }}>
+                  {t('timerChallengeEnableLabel')}
                 </label>
               </div>
-              {timerMode && status === 'playing' && (
+              {timerChallenge && status === 'playing' && (
                 <div
                   aria-live="polite"
                   aria-atomic="true"
@@ -854,7 +900,7 @@ function App() {
                   <span className="sr-only">{timerAriaText}</span>
                 </div>
               )}
-              {timerMode && status === 'timeout' && (
+              {timerChallenge && status === 'timeout' && (
                 <div aria-live="polite" className="ngg-attempts" style={{ textAlign: 'right', color: THEME.error }}>
                   ⏱ {t('timerUp')}
                 </div>
@@ -931,6 +977,11 @@ function App() {
                 <p id="score" className="ngg-attempts" aria-live="polite">
                   {t('score_label', { score })}
                 </p>
+                {timerChallenge && (
+                  <p className="ngg-attempts" aria-live="polite">
+                    {t('time_bonus_breakdown', { percent: winTimeBonusPct })}
+                  </p>
+                )}
                 {roundNewlyUnlocked.length > 0 && (
                   <div className="ngg-ach-wrap" aria-live="polite">
                     {roundNewlyUnlocked.map((key) => {
