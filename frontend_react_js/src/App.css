@@ -420,6 +420,44 @@
   white-space: nowrap;
 }
 
+/* Achievement toast */
+.ngg-ach-toast {
+  position: fixed;
+  right: 16px;
+  top: 72px;
+  background: var(--ocean-surface);
+  border: 1px solid var(--border-color);
+  border-left: 4px solid var(--ocean-secondary);
+  box-shadow: var(--shadow-md);
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  z-index: 60;
+  max-width: 320px;
+  font-size: 14px;
+}
+[data-theme="dark"] .ngg-ach-toast {
+  background: var(--ocean-surface);
+}
+
+/* Achievement chip for win state badges */
+.ngg-ach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(17,24,39,0.1);
+  background: rgba(245, 158, 11, 0.15);
+  font-size: 12px;
+}
+
+.ngg-ach-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
 /* Responsive adjustments */
 @media (max-width: 640px) {
   .ngg-card { padding: 20px; }

@@ -4,6 +4,8 @@ import './App.css';
 import successChimeUrl from './assets/success-chime.mp3';
 import LeaderboardModal from './LeaderboardModal';
 import { addResult } from './leaderboard';
+import AchievementsModal from './AchievementsModal';
+import { ACHIEVEMENT_META, readAchievements, unlockAchievements, writeAchievements } from './achievements';
 import {
   LEVELS,
   LEVEL_ORDER,
@@ -133,6 +135,13 @@ function App() {
   // Leaderboard modal visibility
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
 
+  // Achievements state
+  const [achievements, setAchievements] = useState(() => readAchievements());
+  const [achievementsOpen, setAchievementsOpen] = useState(false);
+  const [achToast, setAchToast] = useState(''); // announcement text for newly unlocked
+  const achLiveRef = useRef(null); // aria-live for achievements
+  const [roundNewlyUnlocked, setRoundNewlyUnlocked] = useState([]); // to show chips on win
+
   // Hint state:
   // count of hint types used (penalty per unique type)
   const [hintTypesUsed, setHintTypesUsed] = useState({
@@ -185,6 +194,13 @@ function App() {
     setLevel(initialLevel);
     const presetDiff = LEVEL_PRESET_DIFFICULTY[initialLevel] || 'easy';
     applyDifficultyPreset(presetDiff);
+
+    // load achievements once
+    try {
+      setAchievements(readAchievements());
+    } catch {
+      // ignore
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -219,6 +235,7 @@ function App() {
     setScore(0);
     resetHints();
     resetHistory();
+    setRoundNewlyUnlocked([]);
     resetAndMaybeStartTimer(nextDifficulty);
     setTimeout(() => inputRef.current?.focus(), 0);
   }
@@ -361,6 +378,7 @@ function App() {
     setScore(0);
     resetHints();
     resetHistory();
+    setRoundNewlyUnlocked([]);
     resetAndMaybeStartTimer(difficulty);
     setTimeout(() => inputRef.current?.focus(), 0);
   }
@@ -379,6 +397,7 @@ function App() {
     setScore(0);
     resetHints();
     resetHistory();
+    setRoundNewlyUnlocked([]);
     resetAndMaybeStartTimer(next);
     setTimeout(() => inputRef.current?.focus(), 0);
   }
@@ -499,6 +518,33 @@ function App() {
 
       // Unlock next level for wins only (not losses/timeouts)
       unlockNextLevelIfEligible(level);
+
+      // Achievements unlock evaluation (persist across sessions)
+      try {
+        const current = readAchievements();
+        const toUnlock = [];
+        if (nextAttempts === 1) toUnlock.push('firstTryWin');
+        if (hintCount === 0) toUnlock.push('noHintsWin');
+        if (toUnlock.length > 0) {
+          const { next, newly } = unlockAchievements(current, toUnlock, Date.now());
+          setAchievements(next);
+          setRoundNewlyUnlocked(newly);
+          if (newly.length > 0) {
+            const titles = newly.map(k => ACHIEVEMENT_META[k]?.title || k).join(' & ');
+            const msg = `Achievement unlocked: ${titles}!`;
+            setAchToast(msg);
+            setTimeout(() => {
+              if (achLiveRef.current) achLiveRef.current.textContent = msg;
+            }, 0);
+            // auto-hide toast after a short delay
+            setTimeout(() => setAchToast(''), 3000);
+          }
+        } else {
+          setRoundNewlyUnlocked([]);
+        }
+      } catch {
+        // no-op
+      }
 
       setTimeout(() => playAgainRef.current?.focus(), 0);
       clearTimer();
@@ -707,9 +753,28 @@ function App() {
             >
               🏆 Leaderboard
             </button>
+            <button
+              className="theme-toggle"
+              onClick={() => setAchievementsOpen(true)}
+              aria-label="Open achievements"
+              title="View achievements"
+            >
+              🥇 Achievements
+            </button>
           </div>
         </div>
       </header>
+
+      {/* Achievements aria-live region */}
+      <div className="sr-only" aria-live="polite" aria-atomic="true" ref={achLiveRef}>
+        {achToast}
+      </div>
+      {/* Visual toast for achievements */}
+      {achToast ? (
+        <div className="ngg-ach-toast" role="status" aria-live="polite">
+          {achToast}
+        </div>
+      ) : null}
 
       <main className="ngg-main">
         <section className="ngg-card" aria-labelledby="game-section-title">
@@ -837,9 +902,23 @@ function App() {
             </div>
 
             {status === 'won' && (
-              <p id="score" className="ngg-attempts" aria-live="polite">
-                Score: <strong>{score}</strong>
-              </p>
+              <>
+                <p id="score" className="ngg-attempts" aria-live="polite">
+                  Score: <strong>{score}</strong>
+                </p>
+                {roundNewlyUnlocked.length > 0 && (
+                  <div className="ngg-ach-wrap" aria-live="polite">
+                    {roundNewlyUnlocked.map((key) => {
+                      const meta = ACHIEVEMENT_META[key];
+                      return (
+                        <span key={key} className="ngg-ach-chip" role="img" aria-label={`${meta.title} unlocked`}>
+                          {meta.emoji} {meta.title}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
             <p className="ngg-attempts" aria-live="polite">
               Current range: <strong>{range.min}</strong> to <strong>{range.max}</strong> ({DIFFICULTIES[difficulty].label})
@@ -981,6 +1060,7 @@ function App() {
       </main>
 
       <LeaderboardModal open={leaderboardOpen} onClose={() => setLeaderboardOpen(false)} />
+      <AchievementsModal open={achievementsOpen} onClose={() => setAchievementsOpen(false)} />
     </div>
   );
 }

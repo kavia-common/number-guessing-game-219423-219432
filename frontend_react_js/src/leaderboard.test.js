@@ -33,8 +33,8 @@ test('adds an entry on win with correct fields and persists to localStorage', ()
 
   // set easy for shorter run
   fireEvent.change(screen.getByLabelText(/Select difficulty/i), { target: { value: 'easy' } });
-  // Make a guess and use one hint to ensure penalties included
-  fireEvent.click(screen.getByRole('button', { name: /Get Hint/i }));
+  // Make a guess and use one hint to ensure penalties included (parity)
+  fireEvent.click(screen.getByRole('button', { name: /Even\/Odd/i }));
 
   bruteForceWin(20);
 
