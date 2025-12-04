@@ -2,7 +2,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import App from './App';
 
 // PUBLIC_INTERFACE
-test('game renders, supports difficulty changes, guessing, and reset', () => {
+test('game renders, supports difficulty changes, guessing, reset, and scoring', () => {
   render(<App />);
 
   // UI elements present
@@ -35,11 +35,71 @@ test('game renders, supports difficulty changes, guessing, and reset', () => {
   const attemptsAfterDiffChange = screen.getByText(/Attempts:/i);
   expect(attemptsAfterDiffChange.textContent).toMatch(/0/);
 
-  // Enter a guess within new range and submit
-  fireEvent.change(input, { target: { value: '10' } });
-  fireEvent.click(guessBtn);
-  const attempts2 = screen.getByText(/Attempts:/i);
-  expect(attempts2.textContent).toMatch(/1/);
+  // Brute-force guesses to guarantee a win within small range and capture score
+  let scoreTextEasyFirst = null;
+  for (let g = 1; g <= 20; g++) {
+    fireEvent.change(input, { target: { value: String(g) } });
+    fireEvent.click(guessBtn);
+    const feedbackEl = screen.getByText(/Make a guess to begin!|Too low|Too high|Correct!/i);
+    if (/Correct!/i.test(feedbackEl.textContent)) {
+      const scoreEl = screen.getByText(/Score:/i);
+      expect(scoreEl).toBeInTheDocument();
+      scoreTextEasyFirst = scoreEl.textContent;
+      break;
+    }
+  }
+  expect(scoreTextEasyFirst).not.toBeNull();
+
+  // Play Again should reset attempts and hide score until next win
+  const playAgainBtn = screen.getByRole('button', { name: /Play Again/i });
+  fireEvent.click(playAgainBtn);
+  expect(screen.getByText(/Attempts:/i).textContent).toMatch(/0/);
+  // score element should not be visible now
+  expect(screen.queryByText(/Score:/i)).toBeNull();
+
+  // Intentionally make more guesses before correct to produce a lower score
+  let madeThreeWrongGuesses = 0;
+  for (let g = 1; g <= 20 && madeThreeWrongGuesses < 3; g++) {
+    fireEvent.change(input, { target: { value: String(g) } });
+    fireEvent.click(guessBtn);
+    const feedbackEl = screen.getByText(/Make a guess to begin!|Too low|Too high|Correct!/i);
+    if (/Too low|Too high/i.test(feedbackEl.textContent)) {
+      madeThreeWrongGuesses++;
+    }
+    if (/Correct!/i.test(feedbackEl.textContent)) {
+      // Found too early, restart to ensure more attempts
+      const playAgain = screen.getByRole('button', { name: /Play Again/i });
+      fireEvent.click(playAgain);
+      madeThreeWrongGuesses = 0;
+      g = 0; // loop will increment to 1
+    }
+  }
+  // Now continue brute-force until win
+  let scoreTextEasySecond = null;
+  for (let g = 1; g <= 20; g++) {
+    fireEvent.change(input, { target: { value: String(g) } });
+    fireEvent.click(guessBtn);
+    const feedbackEl = screen.getByText(/Make a guess to begin!|Too low|Too high|Correct!/i);
+    if (/Correct!/i.test(feedbackEl.textContent)) {
+      const scoreEl = screen.getByText(/Score:/i);
+      expect(scoreEl).toBeInTheDocument();
+      scoreTextEasySecond = scoreEl.textContent;
+      break;
+    }
+  }
+  expect(scoreTextEasySecond).not.toBeNull();
+
+  // Extract numeric scores to compare: fewer guesses should yield higher score
+  const extractNumber = (txt) => {
+    const m = txt.match(/(\d+)/);
+    return m ? Number(m[1]) : 0;
+  };
+  const s1 = extractNumber(scoreTextEasyFirst);
+  const s2 = extractNumber(scoreTextEasySecond);
+  expect(s1).toBeGreaterThanOrEqual(0);
+  expect(s2).toBeGreaterThanOrEqual(0);
+  // We attempted to make more wrong guesses in the second run, so expect second score <= first
+  expect(s2).toBeLessThanOrEqual(s1);
 
   // Reset game
   const resetBtn = screen.getByRole('button', { name: /Reset|Play Again/i });
@@ -49,8 +109,10 @@ test('game renders, supports difficulty changes, guessing, and reset', () => {
   const attemptsAfter = screen.getByText(/Attempts:/i);
   expect(attemptsAfter.textContent).toMatch(/0/);
   expect(screen.getByText(/between 1 and 20/i)).toBeInTheDocument();
+  expect(screen.queryByText(/Score:/i)).toBeNull();
 
-  // Change difficulty to Hard (1-100) and verify subtitle updates
+  // Change difficulty to Hard (1-100) and verify subtitle updates and score resets/hidden
   fireEvent.change(difficulty, { target: { value: 'hard' } });
   expect(screen.getByText(/between 1 and 100/i)).toBeInTheDocument();
+  expect(screen.queryByText(/Score:/i)).toBeNull();
 });

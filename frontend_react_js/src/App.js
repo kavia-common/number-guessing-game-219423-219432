@@ -3,7 +3,7 @@ import './App.css';
 
 /**
  * Number Guessing Game - Ocean Professional themed
- * Single page, centered layout with header, guess input, difficulty selector, feedback, attempts, and reset button.
+ * Single page, centered layout with header, guess input, difficulty selector, feedback, attempts, score, and reset button.
  * Self-contained; no backend calls. Includes keyboard accessibility and focus management.
  */
 
@@ -54,6 +54,7 @@ function App() {
   const [feedback, setFeedback] = useState('');
   const [attempts, setAttempts] = useState(0);
   const [status, setStatus] = useState('playing'); // 'playing' | 'won'
+  const [score, setScore] = useState(0); // track score based on attempts and difficulty
 
   /** Refs for accessibility */
   const inputRef = useRef(null);
@@ -83,6 +84,18 @@ function App() {
     return value;
   }
 
+  /**
+   * Compute a proportional score for a win.
+   * Fewer attempts yield higher score, scaled by the difficulty (range max).
+   * PUBLIC_INTERFACE
+   */
+  function computeScore(attemptCount, rangeMax) {
+    // Avoid division by zero; clamp to sensible values
+    const maxVal = Math.max(1, Number(rangeMax));
+    const raw = Math.round((1000 * (maxVal - attemptCount + 1)) / maxVal);
+    return Math.max(0, raw);
+  }
+
   // PUBLIC_INTERFACE
   function resetGame() {
     // re-generate secret using the current range
@@ -91,6 +104,7 @@ function App() {
     setFeedback('');
     setAttempts(0);
     setStatus('playing');
+    setScore(0);
     // After reset, move focus back to input for keyboard flow
     setTimeout(() => inputRef.current?.focus(), 0);
   }
@@ -108,6 +122,7 @@ function App() {
     setFeedback('');
     setAttempts(0);
     setStatus('playing');
+    setScore(0);
     // keep focus accessible to selector change; move focus to input for play flow
     setTimeout(() => inputRef.current?.focus(), 0);
   }
@@ -136,10 +151,14 @@ function App() {
     }
 
     const guess = validation.value;
-    setAttempts((prev) => prev + 1);
+    // compute the next attempts synchronously for score calc
+    const nextAttempts = attempts + 1;
+    setAttempts(nextAttempts);
 
     if (guess === secret) {
-      setFeedback(`Correct! The number was ${secret}.`);
+      const finalScore = computeScore(nextAttempts, range.max);
+      setScore(finalScore);
+      setFeedback(`Correct! The number was ${secret}. Your score: ${finalScore}.`);
       setStatus('won');
       // after announcing correctness, focus play again
       setTimeout(() => playAgainRef.current?.focus(), 0);
@@ -223,7 +242,7 @@ function App() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={onKeyDown}
                 disabled={status === 'won'}
-                aria-describedby="feedback attempts"
+                aria-describedby="feedback attempts score"
                 aria-invalid={feedback && status !== 'won' ? 'true' : 'false'}
               />
               <button
@@ -250,6 +269,11 @@ function App() {
             <p id="attempts" className="ngg-attempts">
               Attempts: <strong>{attempts}</strong>
             </p>
+            {status === 'won' && (
+              <p id="score" className="ngg-attempts" aria-live="polite">
+                Score: <strong>{score}</strong>
+              </p>
+            )}
             <p className="ngg-attempts" aria-live="polite">
               Current range: <strong>{range.min}</strong> to <strong>{range.max}</strong> ({DIFFICULTIES[difficulty].label})
             </p>
