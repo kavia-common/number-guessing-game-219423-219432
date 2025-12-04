@@ -6,6 +6,8 @@ import successChimeUrl from './assets/success-chime.mp3';
 import LeaderboardModal from './LeaderboardModal';
 import { addResult } from './leaderboard';
 import AchievementsModal from './AchievementsModal';
+import StatisticsModal from './StatisticsModal';
+import { incrementTotalGames } from './statistics';
 import { ACHIEVEMENT_META, readAchievements, unlockAchievements, writeAchievements } from './achievements';
 import {
   LEVELS,
@@ -163,6 +165,7 @@ function App() {
   // Achievements state
   const [achievements, setAchievements] = useState(() => readAchievements());
   const [achievementsOpen, setAchievementsOpen] = useState(false);
+  const [statisticsOpen, setStatisticsOpen] = useState(false);
   const [achToast, setAchToast] = useState(''); // announcement text for newly unlocked
   const achLiveRef = useRef(null); // aria-live for achievements
   const [roundNewlyUnlocked, setRoundNewlyUnlocked] = useState([]); // to show chips on win
@@ -336,6 +339,7 @@ function App() {
             setFeedback(t('feedback_timeout_round_over'));
             // Do not alter history on timeout per requirements
             setTimeout(() => playAgainRef.current?.focus(), 0);
+            try { incrementTotalGames(); } catch {}
             return 0;
           }
           return next;
@@ -570,6 +574,7 @@ function App() {
       );
       setStatus('won');
 
+      try { incrementTotalGames(); } catch {}
       // Unlock next level for wins only (not losses/timeouts)
       unlockNextLevelIfEligible(level);
 
@@ -620,6 +625,7 @@ function App() {
       setStatus('out_of_attempts');
       setFeedback(t('feedback_out_attempts'));
       setTimeout(() => playAgainRef.current?.focus(), 0);
+      try { incrementTotalGames(); } catch {}
       clearTimer();
     }
   }
@@ -831,6 +837,15 @@ function App() {
               title={t('openAchievements')}
             >
               {t('openAchievements')}
+            </button>
+            <button
+              className="theme-toggle"
+              onClick={() => setStatisticsOpen(true)}
+              aria-label={t('openStatistics')}
+              title={t('openStatistics')}
+              data-testid="open-statistics"
+            >
+              {t('openStatistics')}
             </button>
           </div>
         </div>
@@ -1137,6 +1152,7 @@ function App() {
 
       <LeaderboardModal open={leaderboardOpen} onClose={() => setLeaderboardOpen(false)} />
       <AchievementsModal open={achievementsOpen} onClose={() => setAchievementsOpen(false)} />
+      <StatisticsModal open={statisticsOpen} onClose={() => setStatisticsOpen(false)} />
     </div>
   );
 }
